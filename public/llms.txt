@@ -1,0 +1,34 @@
+# CrimeSceneCleanerJobs
+
+> The premier job board for biohazard remediation, trauma scene cleanup, and environmental hazard specialists.
+
+## What it is
+
+A specialized job board connecting crime scene cleanup companies with certified technicians. No generalist job board noise — only biohazard, trauma, and hazmat roles.
+
+## Who posts here
+
+- Biohazard remediation companies
+- Trauma scene cleanup services
+- Environmental hazard contractors
+- HAZMAT response firms
+
+## Who finds work here
+
+- Biohazard cleanup technicians
+- OSHA-certified trauma scene specialists
+- Environmental remediation workers
+- Crime scene restoration contractors
+
+## Key facts
+
+- Listings include pay range, location, job type, and direct contact
+- Employers can post a job for a flat $99 fee
+- Job seekers browse and apply for free
+- AI-assisted job parsing available for employers
+- Server-rendered JobPosting pages for Google Jobs
+- Daily Cloudflare Worker import pipeline for real job-source candidates
+
+## Platform
+
+Built on React, Cloudflare Pages Functions, D1, and a scheduled Cloudflare Worker.

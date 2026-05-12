@@ -1,0 +1,15 @@
+@import "tailwindcss";
+
+:root {
+  --font-sans: 'Space Grotesk', sans-serif;
+  --font-mono: 'Space Mono', monospace;
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-mono {
+  font-family: var(--font-mono);
+}

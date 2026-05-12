@@ -1,0 +1,5 @@
+Contact: mailto:layton925@gmail.com
+Expires: 2027-05-11T00:00:00.000Z
+Preferred-Languages: en
+Canonical: https://crimescenecleanerjobs.com/.well-known/security.txt
+Policy: Responsible disclosure. Report vulnerabilities to the contact above before public disclosure.

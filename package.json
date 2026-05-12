@@ -1,0 +1,41 @@
+{
+  "name": "crimescenecleanerjobs",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "pages:dev": "npm run build && npx wrangler pages dev dist",
+    "db:migrate:local": "npx wrangler d1 migrations apply crimescenecleanerjobs --local",
+    "db:migrate:remote": "npx wrangler d1 migrations apply crimescenecleanerjobs --remote",
+    "db:seed:local": "npx wrangler d1 execute crimescenecleanerjobs --local --file=seeds/local.sql",
+    "agent:deploy": "npx wrangler deploy --config wrangler.agent.toml",
+    "deploy": "npm run build && npx wrangler pages deploy dist --project-name crimescenecleanerjobs"
+  },
+  "dependencies": {
+    "lucide-react": "^1.14.0",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@tailwindcss/postcss": "^4.2.4",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "autoprefixer": "^10.5.0",
+    "eslint": "^10.2.1",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "globals": "^17.5.0",
+    "postcss": "^8.5.13",
+    "tailwindcss": "^4.2.4",
+    "vite": "^8.0.10"
+  }
+}
