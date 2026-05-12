@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Clock, Briefcase, ChevronDown, ChevronUp,
   Search, PlusCircle, Building, Activity, TriangleAlert, Filter,
@@ -113,7 +113,7 @@ const isNew = (dateString) => {
 
 const formatPay = (min, max, type) => {
   if (!min && !max) return 'Pay Negotiable';
-  let str = '';
+  let str;
   if (min && max) str = `$${Number(min).toLocaleString()} – $${Number(max).toLocaleString()}`;
   else if (min) str = `From $${Number(min).toLocaleString()}`;
   else str = `Up to $${Number(max).toLocaleString()}`;
@@ -863,15 +863,16 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh }) => {
 
 // --- MAIN APP ---
 export default function App() {
+  const urlParams = useMemo(() => new URLSearchParams(window.location.search), []);
   const [jobs, setJobs] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [currentView, setCurrentView] = useState('home');
+  const [currentView, setCurrentView] = useState(() => urlParams.get('edit') ? 'edit' : 'home');
   const [showFilters, setShowFilters] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminToken, setAdminToken] = useState(() => getAdminToken());
-  const [editTarget, setEditTarget] = useState('');
+  const [editTarget, setEditTarget] = useState(() => urlParams.get('edit') || '');
   const [modal, setModal] = useState({ isOpen: false, title: '', message: '', type: 'info', onConfirm: null });
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(() => urlParams.get('search') || '');
   const [filters, setFilters] = useState({ state: 'All', city: 'All', paytype: 'All', category: 'All', company: 'All', sort: 'Newest' });
 
   const showMessage = useCallback((title, message, type = 'info') => {
@@ -893,17 +894,6 @@ export default function App() {
 
   useEffect(() => {
     document.title = 'CrimeSceneCleanerJobs — Find Your Next Mission';
-  }, []);
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const initialSearch = params.get('search');
-    if (initialSearch) setSearch(initialSearch);
-    const initialEdit = params.get('edit');
-    if (initialEdit) {
-      setEditTarget(initialEdit);
-      setCurrentView('edit');
-    }
   }, []);
 
   useEffect(() => {
