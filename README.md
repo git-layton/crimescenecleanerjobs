@@ -15,9 +15,10 @@ A niche job board for biohazard remediation, trauma cleanup, and hazmat cleanup 
 
 ## Local start
 
-Install dependencies, create a local D1 database, then run:
+Use Node 20+ with npm, install dependencies, create a local D1 database, then run:
 
 ```sh
+npm install
 npm run db:migrate:local
 npm run db:seed:local
 npm run pages:dev
