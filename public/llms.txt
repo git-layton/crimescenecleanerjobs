@@ -23,7 +23,7 @@ A specialized job board connecting crime scene cleanup companies with certified 
 ## Key facts
 
 - Listings include pay range, location, job type, and direct contact
-- Employers can post a job for a flat $99 fee
+- Employers can submit jobs for admin review
 - Job seekers browse and apply for free
 - AI-assisted job parsing available for employers
 - Server-rendered JobPosting pages for Google Jobs

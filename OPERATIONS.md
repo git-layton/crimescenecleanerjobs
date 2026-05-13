@@ -32,6 +32,10 @@ GOOGLE_INDEXING_ENABLED=false
 
 Use the admin gateway, enter `ADMIN_TOKEN`, run a source scan, review candidates, then publish only listings that point to real apply pages or verified employer contact routes.
 
+## Payments
+
+Stripe is not wired yet. Posting is free while the site is in launch/testing mode, and admin approval controls what becomes public. Add Stripe Checkout and webhooks before advertising paid job posts.
+
 ## Edit codes
 
 Public submissions generate a private edit code tied to the listing owner email. Codes are stored only as hashes in D1. If `RESEND_API_KEY` is set, the code is emailed through Resend. If email is not configured, the app returns the code once after submission so launch testing is not blocked.

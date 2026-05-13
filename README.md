@@ -13,6 +13,10 @@ A niche job board for biohazard remediation, trauma cleanup, and hazmat cleanup 
 - Owner edit codes for submitted posts, with optional Resend email delivery.
 - Scheduled Cloudflare Worker for daily candidate discovery.
 
+## Payments
+
+Stripe is not currently enabled. Public submissions are free to test and enter the admin review queue. Add Stripe Checkout before charging employers for live job posts.
+
 ## Local start
 
 Use Node 20+ with npm, install dependencies, create a local D1 database, then run:
