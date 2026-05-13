@@ -1,6 +1,6 @@
 name = "crimescenecleanerjobs"
+main = "workers/site.js"
 compatibility_date = "2026-05-11"
-pages_build_output_dir = "dist"
 
 [vars]
 PUBLIC_SITE_URL = "https://crimescenecleanerjobs.com"
@@ -21,3 +21,5 @@ migrations_dir = "migrations"
 
 [assets]
 directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
