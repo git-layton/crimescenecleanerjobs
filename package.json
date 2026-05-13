@@ -16,6 +16,8 @@
     "db:migrate:local": "npx wrangler d1 migrations apply crimescenecleanerjobs --local",
     "db:migrate:remote": "npx wrangler d1 migrations apply crimescenecleanerjobs --remote",
     "db:seed:local": "npx wrangler d1 execute crimescenecleanerjobs --local --file=seeds/local.sql",
+    "secrets:minimum": "bash scripts/set-minimum-cloudflare-secrets.sh",
+    "secrets:automation": "bash scripts/set-automation-cloudflare-secrets.sh",
     "agent:deploy": "npx wrangler deploy --config wrangler.agent.toml",
     "deploy": "npm run build && npx wrangler deploy"
   },

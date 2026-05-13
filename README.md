@@ -36,3 +36,19 @@ npm run agent:deploy
 ```
 
 Keep `AUTO_PUBLISH_JOBS=false` until imported listings are consistently clean and verified.
+
+## Minimum Cloudflare Secrets
+
+After `wrangler login`, run:
+
+```sh
+npm run secrets:minimum
+```
+
+When prompted for `ADMIN_TOKEN`, enter the password you want to use in the Admin Gateway.
+
+Optional automation/email provider keys can be added later:
+
+```sh
+npm run secrets:automation
+```

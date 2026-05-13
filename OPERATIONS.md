@@ -12,6 +12,14 @@
 8. Deploy the scheduled Worker with `wrangler.agent.toml`.
 9. Add provider keys for OpenAI, Google Programmable Search, Adzuna, and Google Indexing as they become available.
 
+The easiest way to set the minimum Worker secrets from Terminal is:
+
+```sh
+npm run secrets:minimum
+```
+
+When it asks for `ADMIN_TOKEN`, enter the admin password you want to remember.
+
 ## First data pass
 
 Keep imported jobs as candidates until sources are proven:
