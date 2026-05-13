@@ -18,6 +18,38 @@ const methodNotAllowed = () => new Response('Method not allowed', {
   headers: { Allow: 'GET, POST, PATCH, DELETE' },
 });
 
+async function health(request, env) {
+  const status = {
+    ok: true,
+    time: new Date().toISOString(),
+    site_url: env.PUBLIC_SITE_URL || new URL(request.url).origin,
+    db_bound: Boolean(env.DB),
+    admin_configured: Boolean(env.ADMIN_TOKEN),
+    edit_code_pepper_configured: Boolean(env.EDIT_CODE_PEPPER),
+    email_configured: Boolean(env.RESEND_API_KEY && env.FROM_EMAIL),
+    openai_configured: Boolean(env.OPENAI_API_KEY),
+    google_search_configured: Boolean(env.GOOGLE_SEARCH_API_KEY && env.GOOGLE_SEARCH_CX),
+    adzuna_configured: Boolean(env.ADZUNA_APP_ID && env.ADZUNA_APP_KEY),
+    counts: null,
+  };
+
+  if (env.DB) {
+    try {
+      const result = await env.DB.prepare(
+        "SELECT status, COUNT(*) AS count FROM jobs GROUP BY status ORDER BY status"
+      ).all();
+      status.counts = Object.fromEntries((result.results || []).map(row => [row.status, row.count]));
+    } catch (error) {
+      status.ok = false;
+      status.db_error = error.message;
+    }
+  }
+
+  return Response.json(status, {
+    headers: { 'Cache-Control': 'no-store' },
+  });
+}
+
 function run(handler, request, env, ctx, params = {}) {
   return handler({ request, env, ctx, params, waitUntil: ctx.waitUntil?.bind(ctx) });
 }
@@ -26,6 +58,10 @@ async function routeRequest(request, env, ctx) {
   const url = new URL(request.url);
   const pathname = url.pathname.replace(/\/+$/, '') || '/';
   const method = request.method.toUpperCase();
+
+  if (pathname === '/api/health' && method === 'GET') {
+    return health(request, env);
+  }
 
   if (pathname === '/api/jobs') {
     if (method === 'GET') return run(getJobs, request, env, ctx);

@@ -56,3 +56,11 @@ Optional automation/email provider keys can be added later:
 ```sh
 npm run secrets:automation
 ```
+
+Check production wiring at:
+
+```txt
+https://crimescenecleanerjobs.com/api/health
+```
+
+or the default Worker URL before DNS is attached.
