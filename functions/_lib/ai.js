@@ -75,36 +75,27 @@ function heuristicParse(rawText, hints = {}) {
   };
 }
 
-function extractOpenAIText(payload) {
-  if (payload.output_text) return payload.output_text;
-  const parts = payload.output?.flatMap(item => item.content || []) || [];
-  const textPart = parts.find(part => part.type === 'output_text' || part.type === 'text');
-  return textPart?.text || payload.choices?.[0]?.message?.content || '';
-}
-
-async function openAIParse(env, rawText, hints) {
+async function claudeParse(env, rawText, hints) {
   const fallback = heuristicParse(rawText, hints);
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${env.OPENAI_API_KEY}`,
+      'x-api-key': env.ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: env.OPENAI_MODEL || 'gpt-4.1-mini',
-      temperature: 0.1,
-      response_format: { type: 'json_object' },
+      model: env.CLAUDE_MODEL || 'claude-haiku-4-5-20251001',
+      max_tokens: 1024,
+      system: [
+        'Extract a real job listing into JSON.',
+        'Never invent missing facts. Use empty strings for unknown text fields.',
+        'Only return a raw JSON object — no markdown, no code fences.',
+        'Keys: title, company, city, state, postal_code, pay_min, pay_max, pay_type, employment_type, description, apply_url, contact_email, source_url, source_name, confidence.',
+        'employment_type must be FULL_TIME, PART_TIME, CONTRACTOR, TEMPORARY, PER_DIEM, INTERN, VOLUNTEER, or OTHER.',
+        'confidence must be a number from 0 to 1 based on whether the source looks like a real active hiring post.',
+      ].join(' '),
       messages: [
-        {
-          role: 'system',
-          content: [
-            'Extract a real job listing into JSON.',
-            'Never invent missing facts. Use empty strings for unknown text fields.',
-            'Only return JSON with these keys: title, company, city, state, postal_code, pay_min, pay_max, pay_type, employment_type, description, apply_url, contact_email, source_url, source_name, confidence.',
-            'employment_type must be FULL_TIME, PART_TIME, CONTRACTOR, TEMPORARY, PER_DIEM, INTERN, VOLUNTEER, or OTHER.',
-            'confidence must be a number from 0 to 1 based on whether the source looks like a real active hiring post.',
-          ].join(' '),
-        },
         {
           role: 'user',
           content: JSON.stringify({ hints, rawText: String(rawText || '').slice(0, 16000) }),
@@ -115,23 +106,24 @@ async function openAIParse(env, rawText, hints) {
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`OpenAI parse failed: ${response.status} ${errorText.slice(0, 240)}`);
+    throw new Error(`Claude parse failed: ${response.status} ${errorText.slice(0, 240)}`);
   }
 
   const payload = await response.json();
-  const parsed = JSON.parse(extractOpenAIText(payload) || '{}');
+  const text = payload.content?.[0]?.text || '';
+  const parsed = JSON.parse(text || '{}');
   return { ...fallback, ...parsed, confidence: Number(parsed.confidence ?? fallback.confidence) };
 }
 
 export async function parseJobText(env, rawText, hints = {}) {
   if (!rawText && !hints.title) return heuristicParse('', hints);
 
-  if (!env.OPENAI_API_KEY) {
+  if (!env.ANTHROPIC_API_KEY) {
     return heuristicParse(rawText, hints);
   }
 
   try {
-    return await openAIParse(env, rawText, hints);
+    return await claudeParse(env, rawText, hints);
   } catch (error) {
     console.error(error);
     return { ...heuristicParse(rawText, hints), ai_error: error.message };

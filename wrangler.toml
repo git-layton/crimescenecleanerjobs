@@ -11,7 +11,7 @@ AUTO_PUBLISH_CONFIDENCE = "0.92"
 FETCH_SOURCE_PAGES = "false"
 EDIT_CODE_DAYS = "30"
 RETURN_EDIT_CODE_AFTER_EMAIL = "false"
-OPENAI_MODEL = "gpt-4.1-mini"
+CLAUDE_MODEL = "claude-haiku-4-5-20251001"
 FROM_EMAIL = "CrimeSceneCleanerJobs <no-reply@crimescenecleanerjobs.com>"
 GOOGLE_INDEXING_ENABLED = "false"
 
