@@ -1008,13 +1008,7 @@ export default function App() {
               </span>
             </a>
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => { setEditTarget(''); setCurrentView('edit'); }}
-                className="bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 text-zinc-300 px-3 sm:px-4 py-2 rounded font-bold text-sm uppercase tracking-wide transition flex items-center"
-              >
-                <ShieldCheck className="w-4 h-4 sm:mr-2 text-amber-500" aria-hidden="true" /> <span className="hidden sm:inline">Edit</span>
-              </button>
-              <button
+<button
                 onClick={() => setCurrentView('payment')}
                 className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-100 px-4 sm:px-5 py-2 rounded font-bold text-sm uppercase tracking-wide transition flex items-center"
               >
