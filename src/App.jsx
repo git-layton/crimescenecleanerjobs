@@ -868,7 +868,7 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [currentView, setCurrentView] = useState(() => {
     if (urlParams.get('edit')) return 'edit';
-    if (window.location.pathname === '/post-success') return 'post';
+    if (window.location.pathname === '/post-success') return 'submitting';
     return 'home';
   });
   const [showFilters, setShowFilters] = useState(false);
@@ -899,6 +899,14 @@ export default function App() {
 
   useEffect(() => {
     document.title = 'CrimeSceneCleanerJobs — Find Your Next Mission';
+  }, []);
+
+  useEffect(() => {
+    if (currentView !== 'submitting') return;
+    const pending = sessionStorage.getItem('pendingJob');
+    if (!pending) { setCurrentView('post'); return; }
+    sessionStorage.removeItem('pendingJob');
+    submitJob(JSON.parse(pending));
   }, []);
 
   useEffect(() => {
@@ -952,7 +960,7 @@ export default function App() {
     setCurrentView('admin');
   };
 
-  const handleAddJob = async (newJob) => {
+  const submitJob = async (newJob) => {
     try {
       const result = await dbService.addJob(newJob, { publish: isAdmin });
       const saved = result.job;
@@ -967,6 +975,15 @@ export default function App() {
     } catch (error) {
       showMessage('Save Failed', error.message, 'info');
     }
+  };
+
+  const handleAddJob = async (newJob) => {
+    if (isAdmin) {
+      await submitJob(newJob);
+      return;
+    }
+    sessionStorage.setItem('pendingJob', JSON.stringify(newJob));
+    window.location.href = 'https://buy.stripe.com/6oU14mbCsbzo2sOb7G24000';
   };
 
   const requestDeleteJob = (id) => {
@@ -1004,7 +1021,7 @@ export default function App() {
             </a>
             <div className="flex items-center gap-2">
 <button
-                onClick={() => setCurrentView('payment')}
+                onClick={() => setCurrentView('post')}
                 className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-100 px-4 sm:px-5 py-2 rounded font-bold text-sm uppercase tracking-wide transition flex items-center"
               >
                 <PlusCircle className="w-4 h-4 sm:mr-2 text-amber-500" aria-hidden="true" /> <span className="hidden sm:inline">Post a Job</span>
@@ -1031,6 +1048,12 @@ export default function App() {
           </div>
         ) : currentView === 'admin' && isAdmin ? (
           <AdminDashboard jobs={jobs} onShowMessage={showMessage} onRefresh={() => loadJobs(true)} onExit={() => { setIsAdmin(false); setCurrentView('home'); }} />
+        ) : currentView === 'submitting' ? (
+          <div className="max-w-lg mx-auto mt-32 text-center">
+            <div className="text-5xl mb-4 animate-pulse">⚡</div>
+            <h2 className="text-2xl font-black uppercase tracking-tighter text-zinc-100 mb-2">Publishing your listing…</h2>
+            <p className="text-zinc-400 font-mono text-sm">Payment confirmed. Hang tight.</p>
+          </div>
         ) : currentView === 'posted' && postedJob ? (
           <div className="max-w-lg mx-auto mt-16 text-center">
             <div className="text-5xl mb-4">✅</div>
@@ -1051,27 +1074,6 @@ export default function App() {
             </a>
             <button onClick={() => setCurrentView('home')} className="text-xs text-zinc-500 hover:text-zinc-300 uppercase tracking-widest block w-full">
               Back to Home
-            </button>
-          </div>
-        ) : currentView === 'payment' ? (
-          <div className="max-w-lg mx-auto mt-12 text-center">
-            <PlusCircle className="w-10 h-10 text-amber-500 mx-auto mb-4" />
-            <h2 className="text-3xl font-black uppercase tracking-tighter text-zinc-100 mb-2">Post a Job</h2>
-            <p className="text-zinc-400 font-mono mb-2">$99 flat. No subscription.</p>
-            <ul className="text-sm text-zinc-400 mb-8 space-y-1">
-              <li>45-day listing</li>
-              <li>Dedicated SEO-optimized page</li>
-              <li>Indexed in Google Jobs</li>
-              <li>Edit link sent to your email</li>
-            </ul>
-            <a
-              href="https://buy.stripe.com/6oU14mbCsbzo2sOb7G24000"
-              className="inline-block bg-amber-500 hover:bg-amber-400 text-zinc-950 font-black uppercase tracking-wide px-10 py-4 rounded text-lg transition w-full text-center mb-6"
-            >
-              Pay $99 — Post Your Job
-            </a>
-            <button onClick={() => setCurrentView('home')} className="text-xs text-zinc-500 hover:text-zinc-300 uppercase tracking-widest">
-              Cancel
             </button>
           </div>
         ) : currentView === 'post' ? (
