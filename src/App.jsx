@@ -868,7 +868,7 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [currentView, setCurrentView] = useState(() => {
     if (urlParams.get('edit')) return 'edit';
-    if (urlParams.get('paid') === '1') return 'post';
+    if (window.location.pathname === '/post-success') return 'post';
     return 'home';
   });
   const [showFilters, setShowFilters] = useState(false);
