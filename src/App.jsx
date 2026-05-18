@@ -1064,12 +1064,12 @@ export default function App() {
               <li>Indexed in Google Jobs</li>
               <li>Edit link sent to your email</li>
             </ul>
-            <div className="flex justify-center mb-6">
-              <stripe-buy-button
-                buy-button-id="buy_btn_1TYG4ICDgXf2NnST3uQMOows"
-                publishable-key="pk_live_51Nd05SCDgXf2NnSTZs5qjsQgI6WxtViZOuoIRNqM5uIjKLUQDhkz9lgyFCp932HGaKyiZXX0axZfkCof0IESd7aR005MKw2Sry"
-              />
-            </div>
+            <a
+              href="https://buy.stripe.com/6oU14mbCsbzo2sOb7G24000"
+              className="inline-block bg-amber-500 hover:bg-amber-400 text-zinc-950 font-black uppercase tracking-wide px-10 py-4 rounded text-lg transition w-full text-center mb-6"
+            >
+              Pay $99 — Post Your Job
+            </a>
             <button onClick={() => setCurrentView('home')} className="text-xs text-zinc-500 hover:text-zinc-300 uppercase tracking-widest">
               Cancel
             </button>
