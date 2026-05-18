@@ -875,6 +875,7 @@ export default function App() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminToken, setAdminToken] = useState(() => getAdminToken());
   const [editTarget, setEditTarget] = useState(() => urlParams.get('edit') || '');
+  const [postedJob, setPostedJob] = useState(null);
   const [modal, setModal] = useState({ isOpen: false, title: '', message: '', type: 'info', onConfirm: null });
   const [search, setSearch] = useState(() => urlParams.get('search') || '');
   const [filters, setFilters] = useState({ state: 'All', city: 'All', paytype: 'All', category: 'All', company: 'All', sort: 'Newest' });
@@ -955,20 +956,14 @@ export default function App() {
     try {
       const result = await dbService.addJob(newJob, { publish: isAdmin });
       const saved = result.job;
+      if (saved.status === 'active' && saved.slug) {
+        setPostedJob({ slug: saved.slug, editCode: result.edit?.edit_code || '' });
+        setCurrentView('posted');
+        return;
+      }
       await loadJobs(isAdmin);
       setCurrentView('home');
-      const editNote = result.edit?.edit_code
-        ? ` Your edit code is ${result.edit.edit_code}.`
-        : result.edit?.emailed
-          ? ' An edit code was emailed to the owner.'
-          : '';
-      showMessage(
-        saved.status === 'active' ? 'Success' : 'Queued for Review',
-        saved.status === 'active'
-          ? `Listing published successfully.${editNote}`
-          : `Listing saved to the database and queued for admin approval.${editNote}`,
-        'info'
-      );
+      showMessage('Queued for Review', 'Your listing has been saved and queued for admin approval.');
     } catch (error) {
       showMessage('Save Failed', error.message, 'info');
     }
@@ -1036,6 +1031,28 @@ export default function App() {
           </div>
         ) : currentView === 'admin' && isAdmin ? (
           <AdminDashboard jobs={jobs} onShowMessage={showMessage} onRefresh={() => loadJobs(true)} onExit={() => { setIsAdmin(false); setCurrentView('home'); }} />
+        ) : currentView === 'posted' && postedJob ? (
+          <div className="max-w-lg mx-auto mt-16 text-center">
+            <div className="text-5xl mb-4">✅</div>
+            <h2 className="text-3xl font-black uppercase tracking-tighter text-zinc-100 mb-2">Your listing is live!</h2>
+            <p className="text-zinc-400 font-mono mb-8">It's indexed in Google Jobs and searchable on the site.</p>
+            {postedJob.editCode && (
+              <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-4 mb-6 text-left">
+                <p className="text-xs text-zinc-500 uppercase tracking-widest mb-1">Your edit code — save this</p>
+                <p className="font-mono text-amber-400 text-lg tracking-widest">{postedJob.editCode}</p>
+                <p className="text-xs text-zinc-500 mt-2">Also sent to your email. Use it to edit your listing anytime.</p>
+              </div>
+            )}
+            <a
+              href={`/jobs/${postedJob.slug}`}
+              className="inline-block bg-amber-500 hover:bg-amber-400 text-zinc-950 font-black uppercase tracking-wide px-8 py-3 rounded transition mb-4 w-full text-center"
+            >
+              View Your Listing
+            </a>
+            <button onClick={() => setCurrentView('home')} className="text-xs text-zinc-500 hover:text-zinc-300 uppercase tracking-widest block w-full">
+              Back to Home
+            </button>
+          </div>
         ) : currentView === 'payment' ? (
           <div className="max-w-lg mx-auto mt-12 text-center">
             <PlusCircle className="w-10 h-10 text-amber-500 mx-auto mb-4" />
