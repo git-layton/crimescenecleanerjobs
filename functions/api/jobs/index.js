@@ -26,7 +26,8 @@ export async function onRequestPost({ request, env }) {
 
   const body = await readJson(request);
   const isAdmin = isAdminRequest(request, env);
-  const requestedStatus = body.status === 'active' && isAdmin ? 'active' : 'pending';
+  const autoPublishManual = env.AUTO_PUBLISH_MANUAL_JOBS !== 'false';
+  const requestedStatus = isAdmin && body.status === 'active' ? 'active' : body.source_type === 'import' ? 'pending' : autoPublishManual ? 'active' : 'pending';
 
   try {
     const siteUrl = getSiteUrl(env, request);

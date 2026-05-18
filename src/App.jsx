@@ -866,7 +866,11 @@ export default function App() {
   const urlParams = useMemo(() => new URLSearchParams(window.location.search), []);
   const [jobs, setJobs] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [currentView, setCurrentView] = useState(() => urlParams.get('edit') ? 'edit' : 'home');
+  const [currentView, setCurrentView] = useState(() => {
+    if (urlParams.get('edit')) return 'edit';
+    if (urlParams.get('paid') === '1') return 'post';
+    return 'home';
+  });
   const [showFilters, setShowFilters] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminToken, setAdminToken] = useState(() => getAdminToken());
@@ -1011,7 +1015,7 @@ export default function App() {
                 <ShieldCheck className="w-4 h-4 sm:mr-2 text-amber-500" aria-hidden="true" /> <span className="hidden sm:inline">Edit</span>
               </button>
               <button
-                onClick={() => setCurrentView('post')}
+                onClick={() => setCurrentView('payment')}
                 className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-100 px-4 sm:px-5 py-2 rounded font-bold text-sm uppercase tracking-wide transition flex items-center"
               >
                 <PlusCircle className="w-4 h-4 sm:mr-2 text-amber-500" aria-hidden="true" /> <span className="hidden sm:inline">Post a Job</span>
@@ -1038,6 +1042,27 @@ export default function App() {
           </div>
         ) : currentView === 'admin' && isAdmin ? (
           <AdminDashboard jobs={jobs} onShowMessage={showMessage} onRefresh={() => loadJobs(true)} onExit={() => { setIsAdmin(false); setCurrentView('home'); }} />
+        ) : currentView === 'payment' ? (
+          <div className="max-w-lg mx-auto mt-12 text-center">
+            <PlusCircle className="w-10 h-10 text-amber-500 mx-auto mb-4" />
+            <h2 className="text-3xl font-black uppercase tracking-tighter text-zinc-100 mb-2">Post a Job</h2>
+            <p className="text-zinc-400 font-mono mb-2">$99 flat. No subscription.</p>
+            <ul className="text-sm text-zinc-400 mb-8 space-y-1">
+              <li>45-day listing</li>
+              <li>Dedicated SEO-optimized page</li>
+              <li>Indexed in Google Jobs</li>
+              <li>Edit link sent to your email</li>
+            </ul>
+            <div className="flex justify-center mb-6">
+              <stripe-buy-button
+                buy-button-id="buy_btn_1TYG4ICDgXf2NnST3uQMOows"
+                publishable-key="pk_live_51Nd05SCDgXf2NnSTZs5qjsQgI6WxtViZOuoIRNqM5uIjKLUQDhkz9lgyFCp932HGaKyiZXX0axZfkCof0IESd7aR005MKw2Sry"
+              />
+            </div>
+            <button onClick={() => setCurrentView('home')} className="text-xs text-zinc-500 hover:text-zinc-300 uppercase tracking-widest">
+              Cancel
+            </button>
+          </div>
         ) : currentView === 'post' ? (
           <JobForm onSave={handleAddJob} onCancel={() => setCurrentView('home')} onShowMessage={showMessage} />
         ) : currentView === 'edit' ? (
