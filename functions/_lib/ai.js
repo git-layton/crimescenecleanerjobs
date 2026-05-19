@@ -86,23 +86,50 @@ async function claudeParse(env, rawText, hints) {
     },
     body: JSON.stringify({
       model: env.CLAUDE_MODEL || 'claude-haiku-4-5-20251001',
-      max_tokens: 2048,
-      system: [
-        'Extract a real job listing into JSON from the provided raw text.',
-        'The raw text may contain navigation menus, ads, footers, cookie notices, application forms, or other page junk — ignore all of that.',
-        'Never invent missing facts. Use empty strings for unknown text fields.',
-        'Only return a raw JSON object — no markdown, no code fences.',
-        'Keys: title, company, city, state, postal_code, pay_min, pay_max, pay_type, employment_type, description, apply_url, contact_email, source_url, source_name, confidence.',
-        'description: Write clean well-formatted HTML using only <p> <h2> <h3> <ul> <ol> <li> <strong> <em>. Organize logically: overview, responsibilities, requirements, benefits. Strip all navigation, ads, boilerplate, and non-job content. If the text contains no real job description, use empty string.',
-        'pay_min and pay_max: numbers only, no dollar signs or commas.',
-        'pay_type: "Hourly", "Salary", "Contract", or "Pay Type Not Specified".',
-        'employment_type must be FULL_TIME, PART_TIME, CONTRACTOR, TEMPORARY, PER_DIEM, INTERN, VOLUNTEER, or OTHER.',
-        'confidence: 0–1 float reflecting how likely this is a real active job posting.',
-      ].join(' '),
+      max_tokens: 3000,
+      system: `You are a professional job board editor. Your job is two things: extract structured fields AND rewrite the description as a polished, SEO-optimized job posting.
+
+STEP 1 — Extract these fields exactly:
+- title: job title only, no company name
+- company: hiring company name
+- city, state (2-letter), postal_code
+- pay_min, pay_max: integers only, no symbols
+- pay_type: "Hourly" | "Salary" | "Contract" | "Pay Type Not Specified"
+- employment_type: FULL_TIME | PART_TIME | CONTRACTOR | TEMPORARY | PER_DIEM | INTERN | VOLUNTEER | OTHER
+- apply_url: direct application URL if present
+- contact_email: hiring contact email if present
+- source_url, source_name: where the listing came from
+- confidence: 0.0–1.0 float — how confident this is a real active job post
+
+STEP 2 — Write the "description" field as professional HTML:
+IGNORE COMPLETELY: site navigation, breadcrumbs, ads, cookie banners, login prompts, "similar jobs", footer links, social share buttons, legal boilerplate, application form UI, salary estimate disclaimers, and anything not part of the actual job description.
+
+REWRITE the real job content into clean, professional HTML using ONLY these tags: <h2> <p> <ul> <li> <strong>
+
+Use this structure:
+<h2>About the Role</h2>
+<p>2–3 sentences describing what this position does and why it matters.</p>
+
+<h2>Responsibilities</h2>
+<ul><li>...</li></ul>
+
+<h2>Requirements</h2>
+<ul><li>...</li></ul>
+
+<h2>Compensation & Benefits</h2>
+<p>Only include if real data exists in the source.</p>
+
+Rules for description:
+- Active voice, professional tone, specific and factual
+- Do NOT invent details not present in the source text
+- Do NOT include application instructions (that goes in apply_url/contact_email)
+- If the source has no real job description content, use empty string ""
+
+Return ONLY a raw JSON object. No markdown, no code fences, no explanation.`,
       messages: [
         {
           role: 'user',
-          content: JSON.stringify({ hints, rawText: String(rawText || '').slice(0, 16000) }),
+          content: `Extract and rewrite this job listing:\n\n${String(rawText || '').slice(0, 16000)}`,
         },
       ],
     }),
