@@ -164,6 +164,8 @@ function normalizeContact(input) {
   const contact = clean(input.contact || '', 1000);
   const applyUrl = clean(input.apply_url || (contact.startsWith('http') ? contact : '') || input.source_url || '', 1000);
   const contactEmail = clean(input.contact_email || (contact.includes('@') && !contact.startsWith('http') ? contact : ''), 320);
+  // phone number: neither URL nor email — store as tel: so active-job validation passes
+  if (!applyUrl && !contactEmail && contact) return { applyUrl: `tel:${contact}`, contactEmail: '' };
   return { applyUrl, contactEmail };
 }
 

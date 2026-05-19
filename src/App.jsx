@@ -171,11 +171,15 @@ const TacticalModal = ({ isOpen, title, message, type, onConfirm, onCancel }) =>
 };
 
 // --- JOB CARD ---
+const stripHtml = (html) => String(html || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+
 const JobCard = ({ job, onDeleteRequest, onShowMessage }) => {
   const [expanded, setExpanded] = useState(false);
   const maxLength = 220;
-  const content = job.content || '';
-  const isLong = content.length > maxLength;
+  const rawContent = job.content || '';
+  const isHtml = rawContent.trimStart().startsWith('<');
+  const content = isHtml ? stripHtml(rawContent) : rawContent;
+  const isLong = rawContent.length > maxLength;
   const displayContent = expanded ? content : content.substring(0, maxLength) + (isLong ? '...' : '');
 
   const handleApply = () => {
@@ -399,6 +403,7 @@ const JobForm = ({ onSave, onDirectSave, onCancel, onShowMessage, initialJob = n
     const e = {};
     if (!formData.title.trim()) e.title = 'Job title is required';
     if (!formData.company.trim()) e.company = 'Company name is required';
+    if (!formData.city.trim()) e.city = 'City is required';
     if (!formData.contact.trim()) e.contact = 'Contact method is required';
     if (mode !== 'edit' && !formData.owner_email.trim()) e.owner_email = 'Email required to send your edit link';
     return e;
@@ -522,8 +527,9 @@ const JobForm = ({ onSave, onDirectSave, onCancel, onShowMessage, initialJob = n
           <input type="text" value={formData.location} onChange={e => { setField('location', e.target.value); lookupZip(e.target.value); }} className={inputClass} />
         </div>
         <div>
-          <label className={labelClass}>City</label>
-          <input type="text" value={formData.city} onChange={e => setField('city', e.target.value)} className={inputClass} />
+          <label className={labelClass}>City *</label>
+          <input type="text" value={formData.city} onChange={e => setField('city', e.target.value)} className={`${inputClass}${errors.city ? ' border-red-500' : ''}`} />
+          {errors.city && <p className={errClass}>{errors.city}</p>}
         </div>
         <div>
           <label className={labelClass}>State</label>
