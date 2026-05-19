@@ -277,6 +277,8 @@ const JobForm = ({ onSave, onCancel, onShowMessage, initialJob = null, mode = 'c
   const [aiText, setAiText] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [promoCode, setPromoCode] = useState('');
+  const [showPromo, setShowPromo] = useState(false);
   const [step, setStep] = useState(mode === 'edit' ? 2 : 1);
 
   const handleAIParsing = async () => {
@@ -333,6 +335,22 @@ const JobForm = ({ onSave, onCancel, onShowMessage, initialJob = null, mode = 'c
       return;
     }
     setIsProcessing(true);
+    if (promoCode.trim()) {
+      const res = await fetch('/api/checkout/verify-promo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: promoCode.trim() }),
+      });
+      const { valid } = await res.json();
+      if (valid) {
+        await onSave({ ...formData, created: new Date().toISOString() });
+        setIsProcessing(false);
+        return;
+      }
+      onShowMessage('Invalid Code', 'That promo code is not valid.', 'info');
+      setIsProcessing(false);
+      return;
+    }
     await onSave({ ...formData, created: new Date().toISOString() });
     setIsProcessing(false);
   };
@@ -438,9 +456,26 @@ const JobForm = ({ onSave, onCancel, onShowMessage, initialJob = null, mode = 'c
         <label className={labelClass}>Full Description / Report *</label>
         <textarea value={formData.content} onChange={e => setFormData({ ...formData, content: e.target.value })} className={`${inputClass} h-48 resize-y font-mono`} />
       </div>
-      <div className="flex justify-end space-x-4 pt-6 border-t border-zinc-800">
-        <button onClick={onCancel} className="px-6 py-2.5 rounded-md font-bold uppercase tracking-wide text-zinc-400 hover:text-zinc-100 transition-colors">Cancel</button>
-        <button onClick={handlePaymentAndSave} disabled={isProcessing} className="px-8 py-2.5 bg-amber-500 text-zinc-950 font-bold uppercase tracking-wide rounded-md hover:bg-amber-400 transition-colors active:scale-[0.98] disabled:opacity-50">{isProcessing ? 'Saving...' : mode === 'edit' ? 'Save Updates' : 'Post Job →'}</button>
+      <div className="pt-6 border-t border-zinc-800">
+        {mode !== 'edit' && (
+          <div className="mb-4">
+            {!showPromo ? (
+              <button onClick={() => setShowPromo(true)} className="text-xs text-zinc-600 hover:text-zinc-400 transition-colors">Have a promo code?</button>
+            ) : (
+              <input
+                type="text"
+                value={promoCode}
+                onChange={e => setPromoCode(e.target.value)}
+                placeholder="Enter promo code"
+                className="w-48 p-2 bg-zinc-950 border border-zinc-700 rounded text-zinc-300 text-sm focus:outline-none focus:border-amber-500"
+              />
+            )}
+          </div>
+        )}
+        <div className="flex justify-end space-x-4">
+          <button onClick={onCancel} className="px-6 py-2.5 rounded-md font-bold uppercase tracking-wide text-zinc-400 hover:text-zinc-100 transition-colors">Cancel</button>
+          <button onClick={handlePaymentAndSave} disabled={isProcessing} className="px-8 py-2.5 bg-amber-500 text-zinc-950 font-bold uppercase tracking-wide rounded-md hover:bg-amber-400 transition-colors active:scale-[0.98] disabled:opacity-50">{isProcessing ? 'Saving...' : mode === 'edit' ? 'Save Updates' : 'Post Job →'}</button>
+        </div>
       </div>
     </div>
   );
