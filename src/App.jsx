@@ -276,17 +276,20 @@ const JobForm = ({ onSave, onCancel, onShowMessage, initialJob = null, mode = 'c
   const [formData, setFormData] = useState(() => formStateFromJob(initialJob || {}));
   const [aiText, setAiText] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const [step, setStep] = useState(mode === 'edit' ? 2 : 1);
 
   const handleAIParsing = async () => {
     setIsProcessing(true);
     try {
       const result = await dbService.parseJob(aiText);
+      const parsed = result.job;
+      const inferredEmail = parsed.contact && parsed.contact.includes('@') ? parsed.contact : '';
       setFormData(prev => ({
         ...prev,
-        ...result.job,
-        owner_email: prev.owner_email,
-        content: result.job.content || aiText,
+        ...parsed,
+        owner_email: prev.owner_email || inferredEmail,
+        content: parsed.content || aiText,
       }));
       setStep(2);
     } catch (error) {
@@ -298,9 +301,35 @@ const JobForm = ({ onSave, onCancel, onShowMessage, initialJob = null, mode = 'c
     }
   };
 
+  const handleFileDrop = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer?.files?.[0] || e.target?.files?.[0];
+    if (!file) return;
+    const readable = file.type.startsWith('text/') || /\.(txt|md|csv)$/i.test(file.name);
+    if (!readable) {
+      onShowMessage('Unsupported File', 'Drop a .txt or text file. For PDFs or images, copy and paste the text instead.', 'info');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (ev) => setAiText(ev.target.result);
+    reader.readAsText(file);
+  };
+
+  const lookupZip = async (zip) => {
+    if (!/^\d{5}$/.test(zip)) return;
+    try {
+      const res = await fetch(`https://api.zippopotam.us/us/${zip}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const place = data.places?.[0];
+      if (place) setFormData(prev => ({ ...prev, location: zip, city: prev.city || place['place name'], state: prev.state === 'Select' || !prev.state ? place['state abbreviation'] : prev.state }));
+    } catch {}
+  };
+
   const handlePaymentAndSave = async () => {
     if (mode !== 'edit' && !formData.owner_email) {
-      onShowMessage('Owner Email Required', 'Add an owner email so the edit code has somewhere to go.', 'info');
+      onShowMessage('Owner Email Required', 'Add your email so we can send you the edit link.', 'info');
       return;
     }
     setIsProcessing(true);
@@ -320,28 +349,30 @@ const JobForm = ({ onSave, onCancel, onShowMessage, initialJob = null, mode = 'c
           <h2 className="text-2xl font-bold text-zinc-100 uppercase tracking-tight">Easy Post</h2>
         </div>
         <p className="text-zinc-400 mb-6 leading-relaxed text-sm font-mono">
-          Paste your raw job description, notes, or requirements. Our system extracts the critical data and generates an SEO-optimized listing.
+          Paste your job description or drag and drop a text file. We'll extract the details and generate an SEO-optimized listing.
         </p>
-        <div className="mb-5">
-          <label className={labelClass}>Owner Email *</label>
-          <input
-            type="email"
-            value={formData.owner_email}
-            onChange={e => setFormData({ ...formData, owner_email: e.target.value })}
-            className={inputClass}
+        <div
+          onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
+          onDragLeave={() => setIsDragging(false)}
+          onDrop={handleFileDrop}
+          className={`relative mb-4 rounded-lg transition-colors ${isDragging ? 'bg-amber-500/10 border-amber-500' : ''}`}
+        >
+          <textarea
+            value={aiText}
+            onChange={(e) => setAiText(e.target.value)}
+            placeholder="Paste job description or drag & drop a .txt file here..."
+            aria-label="Paste job description for AI parsing"
+            className={`w-full h-52 p-4 bg-zinc-950 border-2 border-dashed ${isDragging ? 'border-amber-500' : 'border-zinc-700'} rounded-lg text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-amber-500 focus:bg-zinc-900 transition-colors resize-none font-mono text-sm`}
           />
+          <label className="absolute bottom-3 right-3 cursor-pointer text-xs text-zinc-500 hover:text-amber-400 transition-colors">
+            <input type="file" accept=".txt,.md,.csv,text/*" className="hidden" onChange={handleFileDrop} />
+            Browse file
+          </label>
         </div>
-        <textarea
-          value={aiText}
-          onChange={(e) => setAiText(e.target.value)}
-          placeholder="Paste operational requirements..."
-          aria-label="Paste job description for AI parsing"
-          className="w-full h-48 p-4 bg-zinc-950 border-2 border-dashed border-zinc-700 rounded-lg mb-6 text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-amber-500 focus:bg-zinc-900 transition-colors resize-none font-mono text-sm"
-        />
         <div className="flex flex-col items-center space-y-4">
           <button
             onClick={handleAIParsing}
-            disabled={isProcessing || !aiText}
+            disabled={isProcessing || !aiText.trim()}
             className="w-full flex justify-center items-center bg-amber-500 hover:bg-amber-400 disabled:bg-zinc-800 disabled:text-zinc-500 text-zinc-950 font-bold uppercase tracking-wide py-3.5 px-4 rounded-md transition-all active:scale-[0.98]"
           >
             {isProcessing ? 'Processing Data...' : 'Execute Parsing'}
@@ -354,29 +385,6 @@ const JobForm = ({ onSave, onCancel, onShowMessage, initialJob = null, mode = 'c
     );
   }
 
-  if (step === 3) {
-    return (
-      <div className="max-w-md mx-auto bg-zinc-900 p-8 rounded-xl border border-zinc-800 text-center shadow-2xl mt-8">
-        <ShieldAlert className="w-12 h-12 text-amber-500 mx-auto mb-4" aria-hidden="true" />
-        <h2 className="text-2xl font-bold text-zinc-100 mb-2 uppercase tracking-tight">Post Job</h2>
-        <p className="text-zinc-400 mb-6 text-sm font-mono">{mode === 'edit' ? 'Save updates for admin review. Published listings temporarily return to review after edits.' : 'Submit the listing for review. Approved jobs are published with Google Jobs structured data.'}</p>
-        <div className="p-5 bg-zinc-950 rounded-lg mb-6 border border-zinc-800 text-left">
-          <p className="font-bold text-zinc-100">{formData.title}</p>
-          <p className="text-sm text-zinc-500 mt-1">{formData.company}</p>
-        </div>
-        <button
-          onClick={handlePaymentAndSave}
-          disabled={isProcessing}
-          className="w-full bg-green-600 hover:bg-green-500 text-white font-bold uppercase tracking-wide py-3.5 px-4 rounded-md transition-all active:scale-[0.98]"
-        >
-          {isProcessing ? 'Submitting...' : mode === 'edit' ? 'Save Updates' : 'Submit Listing'}
-        </button>
-        <button onClick={() => setStep(2)} className="mt-5 text-zinc-500 hover:text-zinc-300 text-sm font-medium">
-          Abort & Return to Edit
-        </button>
-      </div>
-    );
-  }
 
   return (
     <div className="max-w-3xl mx-auto bg-zinc-900 p-8 rounded-xl border border-zinc-800 shadow-2xl mt-8">
@@ -397,7 +405,7 @@ const JobForm = ({ onSave, onCancel, onShowMessage, initialJob = null, mode = 'c
         </div>
       )}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-        <div><label className={labelClass}>ZIP Code</label><input type="text" value={formData.location} onChange={e => setFormData({ ...formData, location: e.target.value })} className={inputClass} /></div>
+        <div><label className={labelClass}>ZIP Code</label><input type="text" value={formData.location} onChange={e => { setFormData({ ...formData, location: e.target.value }); lookupZip(e.target.value); }} className={inputClass} /></div>
         <div><label className={labelClass}>City</label><input type="text" value={formData.city} onChange={e => setFormData({ ...formData, city: e.target.value })} className={inputClass} /></div>
         <div>
           <label className={labelClass}>State</label>
@@ -431,8 +439,8 @@ const JobForm = ({ onSave, onCancel, onShowMessage, initialJob = null, mode = 'c
         <textarea value={formData.content} onChange={e => setFormData({ ...formData, content: e.target.value })} className={`${inputClass} h-48 resize-y font-mono`} />
       </div>
       <div className="flex justify-end space-x-4 pt-6 border-t border-zinc-800">
-        <button onClick={onCancel} className="px-6 py-2.5 rounded-md font-bold uppercase tracking-wide text-zinc-400 hover:text-zinc-100 transition-colors">Abort</button>
-        <button onClick={() => setStep(3)} className="px-8 py-2.5 bg-amber-500 text-zinc-950 font-bold uppercase tracking-wide rounded-md hover:bg-amber-400 transition-colors active:scale-[0.98]">{mode === 'edit' ? 'Review Updates' : 'Review Submission'}</button>
+        <button onClick={onCancel} className="px-6 py-2.5 rounded-md font-bold uppercase tracking-wide text-zinc-400 hover:text-zinc-100 transition-colors">Cancel</button>
+        <button onClick={handlePaymentAndSave} disabled={isProcessing} className="px-8 py-2.5 bg-amber-500 text-zinc-950 font-bold uppercase tracking-wide rounded-md hover:bg-amber-400 transition-colors active:scale-[0.98] disabled:opacity-50">{isProcessing ? 'Saving...' : mode === 'edit' ? 'Save Updates' : 'Post Job →'}</button>
       </div>
     </div>
   );
