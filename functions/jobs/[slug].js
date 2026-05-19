@@ -10,6 +10,17 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+function sanitizeHtml(raw) {
+  return String(raw || '')
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<iframe[\s\S]*?<\/iframe>/gi, '')
+    .replace(/\s+on\w+="[^"]*"/gi, '')
+    .replace(/\s+on\w+='[^']*'/gi, '')
+    .replace(/href="javascript:[^"]*"/gi, 'href="#"')
+    .replace(/src="javascript:[^"]*"/gi, 'src=""');
+}
+
 function formatPay(job) {
   if (!job.pay_min && !job.pay_max) return 'Pay negotiable';
   const formatter = new Intl.NumberFormat('en-US', { style: 'currency', currency: job.currency || 'USD', maximumFractionDigits: 0 });
@@ -58,7 +69,13 @@ export async function onRequestGet({ request, env, params }) {
       h1 { font-size: clamp(32px, 5vw, 54px); line-height: 1.05; margin: 12px 0 18px; letter-spacing: -0.03em; }
       .meta { color: #a1a1aa; display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 28px; }
       .panel { border: 1px solid #27272a; border-radius: 8px; background: #18181b; padding: 22px; margin: 22px 0; }
-      .description { white-space: pre-wrap; line-height: 1.65; color: #d4d4d8; }
+      .description { line-height: 1.65; color: #d4d4d8; }
+      .description h2 { font-size: 1.15rem; font-weight: 700; margin: 1rem 0 0.4rem; color: #f4f4f5; }
+      .description h3 { font-size: 1rem; font-weight: 700; margin: 0.75rem 0 0.3rem; color: #f4f4f5; }
+      .description ul { list-style: disc; padding-left: 1.5rem; margin: 0.5rem 0; }
+      .description ol { list-style: decimal; padding-left: 1.5rem; margin: 0.5rem 0; }
+      .description li { margin: 0.2rem 0; }
+      .description p { margin: 0.4rem 0; }
       .button { display: inline-block; background: #f59e0b; color: #09090b; text-decoration: none; padding: 13px 20px; border-radius: 6px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
     </style>
   </head>
@@ -75,7 +92,7 @@ export async function onRequestGet({ request, env, params }) {
       <a class="button" href="${escapeHtml(applyTarget)}" rel="nofollow noopener">Apply now</a>
       <section class="panel">
         <h2>Job Details</h2>
-        <div class="description">${escapeHtml(job.description)}</div>
+        <div class="description">${sanitizeHtml(job.description)}</div>
       </section>
       ${job.source_url ? `<p>Original listing: <a href="${escapeHtml(job.source_url)}" rel="nofollow noopener">${escapeHtml(job.source_name || job.source_url)}</a></p>` : ''}
     </main>

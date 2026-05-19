@@ -86,14 +86,18 @@ async function claudeParse(env, rawText, hints) {
     },
     body: JSON.stringify({
       model: env.CLAUDE_MODEL || 'claude-haiku-4-5-20251001',
-      max_tokens: 1024,
+      max_tokens: 2048,
       system: [
-        'Extract a real job listing into JSON.',
+        'Extract a real job listing into JSON from the provided raw text.',
+        'The raw text may contain navigation menus, ads, footers, cookie notices, application forms, or other page junk — ignore all of that.',
         'Never invent missing facts. Use empty strings for unknown text fields.',
         'Only return a raw JSON object — no markdown, no code fences.',
         'Keys: title, company, city, state, postal_code, pay_min, pay_max, pay_type, employment_type, description, apply_url, contact_email, source_url, source_name, confidence.',
+        'description: Write clean well-formatted HTML using only <p> <h2> <h3> <ul> <ol> <li> <strong> <em>. Organize logically: overview, responsibilities, requirements, benefits. Strip all navigation, ads, boilerplate, and non-job content. If the text contains no real job description, use empty string.',
+        'pay_min and pay_max: numbers only, no dollar signs or commas.',
+        'pay_type: "Hourly", "Salary", "Contract", or "Pay Type Not Specified".',
         'employment_type must be FULL_TIME, PART_TIME, CONTRACTOR, TEMPORARY, PER_DIEM, INTERN, VOLUNTEER, or OTHER.',
-        'confidence must be a number from 0 to 1 based on whether the source looks like a real active hiring post.',
+        'confidence: 0–1 float reflecting how likely this is a real active job posting.',
       ].join(' '),
       messages: [
         {

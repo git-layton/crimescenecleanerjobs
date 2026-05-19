@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import {
   Clock, Briefcase, ChevronDown, ChevronUp,
   Search, PlusCircle, Building, Activity, TriangleAlert, Filter,
@@ -272,14 +272,79 @@ const JobCard = ({ job, onDeleteRequest, onShowMessage }) => {
 };
 
 // --- JOB FORM ---
-const JobForm = ({ onSave, onCancel, onShowMessage, initialJob = null, mode = 'create' }) => {
+const ContactInput = ({ value, onChange }) => {
+  const detect = (v) => v && v.includes('@') ? 'email' : v && /^\+?[\d\s\-()+]{7,}$/.test(v.trim()) ? 'phone' : 'url';
+  const [type, setType] = useState(() => detect(value));
+  const types = [
+    { id: 'url', label: 'Website', placeholder: 'https://jobs.yourcompany.com/apply', inputType: 'url' },
+    { id: 'phone', label: 'Phone', placeholder: '+1 (555) 000-0000', inputType: 'tel' },
+    { id: 'email', label: 'Email', placeholder: 'hiring@company.com', inputType: 'email' },
+  ];
+  const inputClass = 'w-full p-2.5 bg-zinc-950 border border-zinc-800 rounded-md text-zinc-100 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors';
+  return (
+    <div>
+      <div className="flex gap-1 mb-2">
+        {types.map(t => (
+          <button key={t.id} type="button" onClick={() => setType(t.id)}
+            className={`px-3 py-1 text-xs font-bold uppercase tracking-wide rounded transition-colors ${type === t.id ? 'bg-amber-500 text-zinc-950' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-100'}`}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+      <input type={types.find(t => t.id === type).inputType} value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={types.find(t => t.id === type).placeholder}
+        className={inputClass} />
+    </div>
+  );
+};
+
+const RichTextEditor = ({ value, onChange, parseKey }) => {
+  const ref = useRef(null);
+  useEffect(() => { if (ref.current) ref.current.innerHTML = value || ''; }, [parseKey]);
+  const exec = (cmd, val = null) => { ref.current.focus(); document.execCommand(cmd, false, val); onChange(ref.current.innerHTML); };
+  const ToolBtn = ({ cmd, val, children, title }) => (
+    <button type="button" title={title} onMouseDown={e => { e.preventDefault(); exec(cmd, val); }}
+      className="px-2 py-1 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700 rounded text-sm transition-colors min-w-[28px]">
+      {children}
+    </button>
+  );
+  return (
+    <div className="border border-zinc-800 rounded-md overflow-hidden focus-within:border-amber-500 focus-within:ring-1 focus-within:ring-amber-500 transition-colors">
+      <div className="flex flex-wrap items-center gap-0.5 p-1.5 bg-zinc-900 border-b border-zinc-800">
+        <ToolBtn cmd="bold" title="Bold"><strong>B</strong></ToolBtn>
+        <ToolBtn cmd="italic" title="Italic"><em>I</em></ToolBtn>
+        <ToolBtn cmd="underline" title="Underline"><span className="underline">U</span></ToolBtn>
+        <span className="w-px h-4 bg-zinc-700 mx-1" />
+        <ToolBtn cmd="formatBlock" val="h2" title="Heading 2">H2</ToolBtn>
+        <ToolBtn cmd="formatBlock" val="h3" title="Heading 3">H3</ToolBtn>
+        <span className="w-px h-4 bg-zinc-700 mx-1" />
+        <ToolBtn cmd="insertUnorderedList" title="Bullet list">• List</ToolBtn>
+        <ToolBtn cmd="insertOrderedList" title="Numbered list">1. List</ToolBtn>
+        <span className="w-px h-4 bg-zinc-700 mx-1" />
+        <ToolBtn cmd="removeFormat" title="Clear formatting">Clear</ToolBtn>
+      </div>
+      <div ref={ref} contentEditable onInput={e => onChange(e.currentTarget.innerHTML)}
+        className="rich-editor" suppressContentEditableWarning />
+    </div>
+  );
+};
+
+const JobForm = ({ onSave, onDirectSave, onCancel, onShowMessage, initialJob = null, mode = 'create' }) => {
   const [formData, setFormData] = useState(() => formStateFromJob(initialJob || {}));
   const [aiText, setAiText] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [promoCode, setPromoCode] = useState('');
   const [showPromo, setShowPromo] = useState(false);
+  const [parseKey, setParseKey] = useState(0);
+  const [errors, setErrors] = useState({});
   const [step, setStep] = useState(mode === 'edit' ? 2 : 1);
+
+  const setField = (key, val) => {
+    setFormData(prev => ({ ...prev, [key]: val }));
+    if (errors[key]) setErrors(prev => ({ ...prev, [key]: undefined }));
+  };
 
   const handleAIParsing = async () => {
     setIsProcessing(true);
@@ -293,6 +358,7 @@ const JobForm = ({ onSave, onCancel, onShowMessage, initialJob = null, mode = 'c
         owner_email: prev.owner_email || inferredEmail,
         content: parsed.content || aiText,
       }));
+      setParseKey(k => k + 1);
       setStep(2);
     } catch (error) {
       onShowMessage('Parser Offline', `${error.message}. You can still finish the listing manually.`, 'info');
@@ -329,30 +395,38 @@ const JobForm = ({ onSave, onCancel, onShowMessage, initialJob = null, mode = 'c
     } catch {}
   };
 
+  const validate = () => {
+    const e = {};
+    if (!formData.title.trim()) e.title = 'Job title is required';
+    if (!formData.company.trim()) e.company = 'Company name is required';
+    if (!formData.contact.trim()) e.contact = 'Contact method is required';
+    if (mode !== 'edit' && !formData.owner_email.trim()) e.owner_email = 'Email required to send your edit link';
+    return e;
+  };
+
   const handlePaymentAndSave = async () => {
-    if (mode !== 'edit' && !formData.owner_email) {
-      onShowMessage('Owner Email Required', 'Add your email so we can send you the edit link.', 'info');
-      return;
-    }
+    const errs = validate();
+    if (Object.keys(errs).length) { setErrors(errs); return; }
     setIsProcessing(true);
-    if (promoCode.trim()) {
-      const res = await fetch('/api/checkout/verify-promo', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: promoCode.trim() }),
-      });
-      const { valid } = await res.json();
-      if (valid) {
-        await onSave({ ...formData, created: new Date().toISOString() });
-        setIsProcessing(false);
+    try {
+      if (promoCode.trim()) {
+        const res = await fetch('/api/checkout/verify-promo', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: promoCode.trim() }),
+        });
+        const { valid } = await res.json();
+        if (valid) {
+          await onDirectSave({ ...formData, created: new Date().toISOString() });
+          return;
+        }
+        onShowMessage('Invalid Code', 'That promo code is not valid.', 'info');
         return;
       }
-      onShowMessage('Invalid Code', 'That promo code is not valid.', 'info');
+      await onSave({ ...formData, created: new Date().toISOString() });
+    } finally {
       setIsProcessing(false);
-      return;
     }
-    await onSave({ ...formData, created: new Date().toISOString() });
-    setIsProcessing(false);
   };
 
   const inputClass = 'w-full p-2.5 bg-zinc-950 border border-zinc-800 rounded-md text-zinc-100 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors';
@@ -404,58 +478,98 @@ const JobForm = ({ onSave, onCancel, onShowMessage, initialJob = null, mode = 'c
   }
 
 
+  const errClass = 'text-red-400 text-xs mt-1';
+
   return (
     <div className="max-w-3xl mx-auto bg-zinc-900 p-8 rounded-xl border border-zinc-800 shadow-2xl mt-8">
       <h2 className="text-2xl font-bold mb-8 text-zinc-100 uppercase tracking-tight border-b border-zinc-800 pb-4">Job Details</h2>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-        <div><label className={labelClass}>Job Title *</label><input type="text" value={formData.title} onChange={e => setFormData({ ...formData, title: e.target.value })} className={inputClass} /></div>
-        <div><label className={labelClass}>Company Name *</label><input type="text" value={formData.company} onChange={e => setFormData({ ...formData, company: e.target.value })} className={inputClass} /></div>
+        <div>
+          <label className={labelClass}>Job Title *</label>
+          <input type="text" value={formData.title} onChange={e => setField('title', e.target.value)} className={`${inputClass}${errors.title ? ' border-red-500' : ''}`} />
+          {errors.title && <p className={errClass}>{errors.title}</p>}
+        </div>
+        <div>
+          <label className={labelClass}>Company Name *</label>
+          <input type="text" value={formData.company} onChange={e => setField('company', e.target.value)} className={`${inputClass}${errors.company ? ' border-red-500' : ''}`} />
+          {errors.company && <p className={errClass}>{errors.company}</p>}
+        </div>
       </div>
+
       {mode !== 'edit' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          <div><label className={labelClass}>Owner Email *</label><input type="email" value={formData.owner_email} onChange={e => setFormData({ ...formData, owner_email: e.target.value })} className={inputClass} /></div>
-          <div><label className={labelClass}>Company Website</label><input type="url" value={formData.company_url} onChange={e => setFormData({ ...formData, company_url: e.target.value })} className={inputClass} /></div>
+          <div>
+            <label className={labelClass}>Where to send edit link? *</label>
+            <input type="email" value={formData.owner_email} onChange={e => setField('owner_email', e.target.value)} placeholder="your@email.com" className={`${inputClass}${errors.owner_email ? ' border-red-500' : ''}`} />
+            {errors.owner_email && <p className={errClass}>{errors.owner_email}</p>}
+          </div>
+          <div>
+            <label className={labelClass}>Company Website</label>
+            <input type="url" value={formData.company_url} onChange={e => setField('company_url', e.target.value)} placeholder="https://..." className={inputClass} />
+          </div>
         </div>
       ) : (
         <div className="mb-6">
           <label className={labelClass}>Company Website</label>
-          <input type="url" value={formData.company_url} onChange={e => setFormData({ ...formData, company_url: e.target.value })} className={inputClass} />
+          <input type="url" value={formData.company_url} onChange={e => setField('company_url', e.target.value)} className={inputClass} />
         </div>
       )}
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-        <div><label className={labelClass}>ZIP Code</label><input type="text" value={formData.location} onChange={e => { setFormData({ ...formData, location: e.target.value }); lookupZip(e.target.value); }} className={inputClass} /></div>
-        <div><label className={labelClass}>City</label><input type="text" value={formData.city} onChange={e => setFormData({ ...formData, city: e.target.value })} className={inputClass} /></div>
+        <div>
+          <label className={labelClass}>ZIP Code</label>
+          <input type="text" value={formData.location} onChange={e => { setField('location', e.target.value); lookupZip(e.target.value); }} className={inputClass} />
+        </div>
+        <div>
+          <label className={labelClass}>City</label>
+          <input type="text" value={formData.city} onChange={e => setField('city', e.target.value)} className={inputClass} />
+        </div>
         <div>
           <label className={labelClass}>State</label>
-          <select value={formData.state} onChange={e => setFormData({ ...formData, state: e.target.value })} className={inputClass}>
+          <select value={formData.state} onChange={e => setField('state', e.target.value)} className={inputClass}>
             <option>Select</option>
-            {US_STATES.map(state => <option key={state} value={state}>{state}</option>)}
+            {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
       </div>
+
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
-        <div><label className={labelClass}>Min Pay</label><input type="number" value={formData.payrangemin} onChange={e => setFormData({ ...formData, payrangemin: e.target.value })} className={inputClass} /></div>
-        <div><label className={labelClass}>Max Pay</label><input type="number" value={formData.payrangemax} onChange={e => setFormData({ ...formData, payrangemax: e.target.value })} className={inputClass} /></div>
+        <div>
+          <label className={labelClass}>Min Pay</label>
+          <input type="number" value={formData.payrangemin} onChange={e => setField('payrangemin', e.target.value)} className={inputClass} />
+        </div>
+        <div>
+          <label className={labelClass}>Max Pay</label>
+          <input type="number" value={formData.payrangemax} onChange={e => setField('payrangemax', e.target.value)} className={inputClass} />
+        </div>
         <div className="col-span-2">
           <label className={labelClass}>Pay Type</label>
-          <select value={formData.paytype} onChange={e => setFormData({ ...formData, paytype: e.target.value })} className={inputClass}>
+          <select value={formData.paytype} onChange={e => setField('paytype', e.target.value)} className={inputClass}>
             <option>Pay Type Not Specified</option><option>Hourly</option><option>Salary</option><option>Contract</option>
           </select>
         </div>
       </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
         <div>
           <label className={labelClass}>Job Type</label>
-          <select value={formData.category} onChange={e => setFormData({ ...formData, category: e.target.value })} className={inputClass}>
+          <select value={formData.category} onChange={e => setField('category', e.target.value)} className={inputClass}>
             <option>Full-time</option><option>Part-time</option><option>Contract</option>
           </select>
         </div>
-        <div><label className={labelClass}>Contact Link/Email *</label><input type="text" value={formData.contact} onChange={e => setFormData({ ...formData, contact: e.target.value })} className={inputClass} /></div>
+        <div>
+          <label className={labelClass}>How to Apply *</label>
+          <ContactInput value={formData.contact} onChange={v => { setField('contact', v); }} />
+          {errors.contact && <p className={errClass}>{errors.contact}</p>}
+        </div>
       </div>
+
       <div className="mb-8">
-        <label className={labelClass}>Full Description / Report *</label>
-        <textarea value={formData.content} onChange={e => setFormData({ ...formData, content: e.target.value })} className={`${inputClass} h-48 resize-y font-mono`} />
+        <label className={labelClass}>Job Description</label>
+        <RichTextEditor value={formData.content} onChange={v => setFormData(prev => ({ ...prev, content: v }))} parseKey={parseKey} />
       </div>
+
       <div className="pt-6 border-t border-zinc-800">
         {mode !== 'edit' && (
           <div className="mb-4">
@@ -472,9 +586,14 @@ const JobForm = ({ onSave, onCancel, onShowMessage, initialJob = null, mode = 'c
             )}
           </div>
         )}
+        {Object.keys(errors).length > 0 && (
+          <p className="text-red-400 text-sm mb-4 font-mono">⚠ Please fill in the required fields highlighted above.</p>
+        )}
         <div className="flex justify-end space-x-4">
           <button onClick={onCancel} className="px-6 py-2.5 rounded-md font-bold uppercase tracking-wide text-zinc-400 hover:text-zinc-100 transition-colors">Cancel</button>
-          <button onClick={handlePaymentAndSave} disabled={isProcessing} className="px-8 py-2.5 bg-amber-500 text-zinc-950 font-bold uppercase tracking-wide rounded-md hover:bg-amber-400 transition-colors active:scale-[0.98] disabled:opacity-50">{isProcessing ? 'Saving...' : mode === 'edit' ? 'Save Updates' : 'Post Job →'}</button>
+          <button onClick={handlePaymentAndSave} disabled={isProcessing} className="px-8 py-2.5 bg-amber-500 text-zinc-950 font-bold uppercase tracking-wide rounded-md hover:bg-amber-400 transition-colors active:scale-[0.98] disabled:opacity-50">
+            {isProcessing ? 'Saving...' : mode === 'edit' ? 'Save Updates' : 'Post Job →'}
+          </button>
         </div>
       </div>
     </div>
@@ -1021,12 +1140,13 @@ export default function App() {
   };
 
   const handleAddJob = async (newJob) => {
-    if (isAdmin) {
-      await submitJob(newJob);
-      return;
-    }
+    if (isAdmin) { await submitJob(newJob); return; }
     sessionStorage.setItem('pendingJob', JSON.stringify(newJob));
     window.location.href = 'https://buy.stripe.com/6oU14mbCsbzo2sOb7G24000';
+  };
+
+  const handleAddJobDirect = async (newJob) => {
+    await submitJob(newJob);
   };
 
   const requestDeleteJob = (id) => {
@@ -1120,7 +1240,7 @@ export default function App() {
             </button>
           </div>
         ) : currentView === 'post' ? (
-          <JobForm onSave={handleAddJob} onCancel={() => setCurrentView('home')} onShowMessage={showMessage} />
+          <JobForm onSave={handleAddJob} onDirectSave={handleAddJobDirect} onCancel={() => setCurrentView('home')} onShowMessage={showMessage} />
         ) : currentView === 'edit' ? (
           <EditPostGateway
             initialJobKey={editTarget}
