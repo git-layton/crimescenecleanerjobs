@@ -16,6 +16,9 @@ if [[ -z "${ADMIN_TOKEN}" ]]; then
   exit 1
 fi
 
+read -r -s -p "PROMO_CODE (leave blank to skip): " PROMO_CODE
+echo
+
 if command -v openssl >/dev/null 2>&1; then
   EDIT_CODE_PEPPER="$(openssl rand -hex 32)"
 else
@@ -24,6 +27,10 @@ fi
 
 printf "%s" "${ADMIN_TOKEN}" | npx wrangler secret put ADMIN_TOKEN
 printf "%s" "${EDIT_CODE_PEPPER}" | npx wrangler secret put EDIT_CODE_PEPPER
+if [[ -n "${PROMO_CODE}" ]]; then
+  printf "%s" "${PROMO_CODE}" | npx wrangler secret put PROMO_CODE
+  echo "PROMO_CODE saved."
+fi
 
 echo
 echo "Minimum secrets saved."
