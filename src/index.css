@@ -22,21 +22,21 @@ body {
   outline: none;
   line-height: 1.65;
 }
-.rich-editor h2 { font-size: 1.15rem; font-weight: 700; margin: 1.25rem 0 0.4rem; color: #f59e0b; text-transform: uppercase; letter-spacing: 0.05em; }
-.rich-editor h2:first-child { margin-top: 0.25rem; }
-.rich-editor h3 { font-size: 1rem; font-weight: 700; margin: 0.9rem 0 0.35rem; color: #e4e4e7; }
-.rich-editor ul { list-style: disc; padding-left: 1.5rem; margin: 0.4rem 0 0.75rem; }
-.rich-editor ol { list-style: decimal; padding-left: 1.5rem; margin: 0.4rem 0 0.75rem; }
-.rich-editor li { margin: 0.3rem 0; color: #d4d4d8; }
-.rich-editor p { margin: 0.4rem 0 0.65rem; color: #d4d4d8; }
+.rich-editor h2 { font-size: 0.7rem; font-weight: 700; margin: 1.75rem 0 0.6rem; color: #f59e0b; text-transform: uppercase; letter-spacing: 0.1em; padding-top: 1rem; border-top: 1px solid #27272a; }
+.rich-editor h2:first-child { margin-top: 0; padding-top: 0; border-top: none; }
+.rich-editor h3 { font-size: 0.95rem; font-weight: 700; margin: 1rem 0 0.35rem; color: #e4e4e7; }
+.rich-editor ul { list-style: disc; padding-left: 1.5rem; margin: 0.25rem 0 1rem; }
+.rich-editor ol { list-style: decimal; padding-left: 1.5rem; margin: 0.25rem 0 1rem; }
+.rich-editor li { margin: 0.35rem 0; color: #d4d4d8; line-height: 1.5; }
+.rich-editor p { margin: 0 0 0.75rem; color: #d4d4d8; line-height: 1.65; }
 .rich-editor strong { color: #f4f4f5; font-weight: 700; }
 .rich-editor em { color: #a1a1aa; font-style: italic; }
 
-.job-description h2 { font-size: 1.15rem; font-weight: 700; margin: 1.25rem 0 0.4rem; color: #f59e0b; text-transform: uppercase; letter-spacing: 0.05em; }
-.job-description h2:first-child { margin-top: 0.25rem; }
-.job-description h3 { font-size: 1rem; font-weight: 700; margin: 0.9rem 0 0.35rem; color: #e4e4e7; }
-.job-description ul { list-style: disc; padding-left: 1.5rem; margin: 0.4rem 0 0.75rem; }
-.job-description ol { list-style: decimal; padding-left: 1.5rem; margin: 0.4rem 0 0.75rem; }
-.job-description li { margin: 0.3rem 0; color: #d4d4d8; }
-.job-description p { margin: 0.4rem 0 0.65rem; color: #d4d4d8; }
+.job-description h2 { font-size: 0.7rem; font-weight: 700; margin: 1.75rem 0 0.6rem; color: #f59e0b; text-transform: uppercase; letter-spacing: 0.1em; padding-top: 1rem; border-top: 1px solid #27272a; }
+.job-description h2:first-child { margin-top: 0; padding-top: 0; border-top: none; }
+.job-description h3 { font-size: 0.95rem; font-weight: 700; margin: 1rem 0 0.35rem; color: #e4e4e7; }
+.job-description ul { list-style: disc; padding-left: 1.5rem; margin: 0.25rem 0 1rem; }
+.job-description ol { list-style: decimal; padding-left: 1.5rem; margin: 0.25rem 0 1rem; }
+.job-description li { margin: 0.35rem 0; color: #d4d4d8; line-height: 1.5; }
+.job-description p { margin: 0 0 0.75rem; color: #d4d4d8; line-height: 1.65; }
 .job-description strong { color: #f4f4f5; font-weight: 700; }

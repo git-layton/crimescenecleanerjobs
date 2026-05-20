@@ -385,6 +385,7 @@ const JobForm = ({ onSave, onDirectSave, onCancel, onShowMessage, initialJob = n
   const [showPromo, setShowPromo] = useState(false);
   const [promoValid, setPromoValid] = useState(false);
   const [promoChecking, setPromoChecking] = useState(false);
+  const [promoError, setPromoError] = useState('');
   const [parseKey, setParseKey] = useState(0);
   const [errors, setErrors] = useState({});
   const [step, setStep] = useState(mode === 'edit' ? 2 : 1);
@@ -453,22 +454,31 @@ const JobForm = ({ onSave, onDirectSave, onCancel, onShowMessage, initialJob = n
     return e;
   };
 
+  const checkPromo = async (code) => {
+    const res = await fetch('/api/checkout/verify-promo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: code.trim() }),
+    });
+    if (!res.ok) throw new Error(`Server error ${res.status}`);
+    const data = await res.json();
+    return data.valid === true;
+  };
+
   const handleApplyPromo = async () => {
     if (!promoCode.trim()) return;
     setPromoChecking(true);
+    setPromoError('');
+    setPromoValid(false);
     try {
-      const res = await fetch('/api/checkout/verify-promo', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: promoCode.trim() }),
-      });
-      const { valid } = await res.json();
+      const valid = await checkPromo(promoCode);
       if (valid) {
         setPromoValid(true);
       } else {
-        setPromoValid(false);
-        onShowMessage('Invalid Code', 'That promo code is not valid.', 'info');
+        setPromoError('Invalid promo code.');
       }
+    } catch (err) {
+      setPromoError(`Error: ${err.message}`);
     } finally {
       setPromoChecking(false);
     }
@@ -480,21 +490,22 @@ const JobForm = ({ onSave, onDirectSave, onCancel, onShowMessage, initialJob = n
     setIsProcessing(true);
     try {
       if (promoCode.trim()) {
-        const valid = promoValid || await (async () => {
-          const res = await fetch('/api/checkout/verify-promo', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ code: promoCode.trim() }),
-          });
-          const { valid: v } = await res.json();
-          return v;
-        })();
+        let valid = promoValid;
+        if (!valid) {
+          setPromoError('');
+          try {
+            valid = await checkPromo(promoCode);
+          } catch (err) {
+            setPromoError(`Error: ${err.message}`);
+            return;
+          }
+        }
         if (valid) {
           setPromoValid(true);
           await onDirectSave({ ...formData, created: new Date().toISOString() });
           return;
         }
-        onShowMessage('Invalid Code', 'That promo code is not valid.', 'info');
+        setPromoError('Invalid promo code.');
         return;
       }
       await onSave({ ...formData, created: new Date().toISOString() });
@@ -650,25 +661,30 @@ const JobForm = ({ onSave, onDirectSave, onCancel, onShowMessage, initialJob = n
           <div className="mb-4">
             {!showPromo ? (
               <button onClick={() => setShowPromo(true)} className="text-xs text-zinc-600 hover:text-zinc-400 transition-colors">Have a promo code?</button>
-            ) : promoValid ? (
-              <span className="text-green-400 text-sm font-mono">✓ Promo code applied — Stripe skipped</span>
             ) : (
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={promoCode}
-                  onChange={e => { setPromoCode(e.target.value); setPromoValid(false); }}
-                  onKeyDown={e => e.key === 'Enter' && handleApplyPromo()}
-                  placeholder="Enter promo code"
-                  className="w-48 p-2 bg-zinc-950 border border-zinc-700 rounded text-zinc-300 text-sm focus:outline-none focus:border-amber-500"
-                />
-                <button
-                  onClick={handleApplyPromo}
-                  disabled={promoChecking || !promoCode.trim()}
-                  className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-zinc-300 text-sm rounded transition-colors"
-                >
-                  {promoChecking ? '...' : 'Apply'}
-                </button>
+              <div className="flex flex-col gap-1.5">
+                {promoValid ? (
+                  <span className="text-green-400 text-sm font-mono font-bold">✓ Promo code applied — no payment required</span>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={promoCode}
+                      onChange={e => { setPromoCode(e.target.value); setPromoValid(false); setPromoError(''); }}
+                      onKeyDown={e => e.key === 'Enter' && handleApplyPromo()}
+                      placeholder="Enter promo code"
+                      className={`w-48 p-2 bg-zinc-950 border rounded text-zinc-300 text-sm focus:outline-none focus:border-amber-500 transition-colors ${promoError ? 'border-red-500' : 'border-zinc-700'}`}
+                    />
+                    <button
+                      onClick={handleApplyPromo}
+                      disabled={promoChecking || !promoCode.trim()}
+                      className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-zinc-300 text-sm rounded transition-colors"
+                    >
+                      {promoChecking ? 'Checking...' : 'Apply'}
+                    </button>
+                  </div>
+                )}
+                {promoError && <span className="text-red-400 text-xs font-mono">{promoError}</span>}
               </div>
             )}
           </div>
