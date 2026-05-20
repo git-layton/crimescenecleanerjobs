@@ -8,6 +8,7 @@ import { onRequestPost as rejectCandidate } from '../functions/api/admin/candida
 import { onRequestPost as requestEditCode } from '../functions/api/edit-codes/request.js';
 import { onRequestPost as verifyEditCode } from '../functions/api/edit-codes/verify.js';
 import { onRequestPatch as updateWithEditCode } from '../functions/api/edit-codes/update.js';
+import { onRequestPost as verifyPromo } from '../functions/api/checkout/verify-promo.js';
 import { onRequestPost as requestIndexing } from '../functions/api/admin/indexing.js';
 import { onRequestGet as getGoogleJobsFeed } from '../functions/api/google/jobs.json.js';
 import { onRequestGet as getSitemap } from '../functions/sitemap.xml.js';
@@ -80,6 +81,10 @@ async function routeRequest(request, env, ctx) {
 
   if (pathname === '/api/parse-job' && method === 'POST') {
     return run(parseJob, request, env, ctx);
+  }
+
+  if (pathname === '/api/checkout/verify-promo' && method === 'POST') {
+    return run(verifyPromo, request, env, ctx);
   }
 
   if (pathname === '/api/admin/scan' && method === 'POST') {

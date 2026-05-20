@@ -108,22 +108,32 @@ STEP 1 — Extract these fields from the real job content only:
 - source_url, source_name: where the listing came from
 - confidence: 0.0–1.0 — how confident this is a real active job post (not a template or example)
 
-STEP 2 — Write the "description" field as professional HTML using ONLY: <h2> <p> <ul> <li> <strong>
+STEP 2 — Write the "description" field as SEO-optimized professional HTML.
+Use ONLY these tags: <h2> <p> <ul> <li> <strong>
+Do NOT use markdown, asterisks, hashes, or plain text. Every section must be valid HTML.
 
-Structure:
+Required structure — include all sections that have real source data:
+
 <h2>About the Role</h2>
-<p>2–3 sentences on what this position does and why it matters.</p>
-<h2>Responsibilities</h2>
-<ul><li>...</li></ul>
-<h2>Requirements</h2>
-<ul><li>...</li></ul>
-<h2>Compensation & Benefits</h2>
-<p>Only if real data exists in the source.</p>
+<p>2–3 punchy sentences. Lead with what makes this role compelling. Include the job title, company name, and location naturally for SEO. Use industry keywords (e.g. "biohazard remediation", "crime scene cleanup", "trauma cleaning").</p>
 
-Rules:
-- Active voice, professional tone, factual — do NOT invent details
-- Do NOT include application instructions (captured in apply_url/contact_email)
-- If there is genuinely no real job description content after stripping noise, set description to ""
+<h2>What You'll Do</h2>
+<ul><li>Specific, active-voice responsibilities from the source. Each bullet starts with a verb.</li></ul>
+
+<h2>What You'll Need</h2>
+<ul><li>Required qualifications, certifications, and skills. Be specific — include OSHA, BBP, EPA, licensing if mentioned.</li></ul>
+
+<h2>Compensation & Benefits</h2>
+<p>Include only if real pay/benefits data exists in source. Do not invent figures.</p>
+
+SEO rules:
+- Naturally include terms like: crime scene cleanup, biohazard remediation, trauma cleaning, hazmat technician, [city] [state]
+- Write for humans first, search engines second
+- Avoid generic filler phrases ("join our team", "fast-paced environment")
+- Active voice throughout, no passive constructions
+
+Do NOT include application instructions — those go in apply_url/contact_email.
+If no real job content exists after stripping noise, set description to "".
 
 Return ONLY a raw JSON object. No markdown, no code fences, no explanation.`,
       messages: [
