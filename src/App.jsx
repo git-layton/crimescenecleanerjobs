@@ -234,12 +234,9 @@ const stripHtml = (html) => String(html || '').replace(/<[^>]*>/g, ' ').replace(
 
 const JobCard = ({ job, onDeleteRequest, onShowMessage }) => {
   const [expanded, setExpanded] = useState(false);
-  const maxLength = 220;
   const rawContent = job.content || '';
   const isHtml = rawContent.trimStart().startsWith('<');
-  const content = isHtml ? stripHtml(rawContent) : rawContent;
-  const isLong = rawContent.length > maxLength;
-  const displayContent = expanded ? content : content.substring(0, maxLength) + (isLong ? '...' : '');
+  const isLong = rawContent.length > 400;
 
   const handleApply = () => {
     const contact = job.contact || '';
@@ -260,7 +257,7 @@ const JobCard = ({ job, onDeleteRequest, onShowMessage }) => {
         <div className="flex-1">
           <div className="flex items-center gap-3 mb-2">
             <h2 className="text-xl font-bold tracking-tight">
-              <a href={job.detail_path || `/jobs/${job.slug}`} className="text-zinc-100 hover:text-amber-400 transition-colors">
+              <a href={job.detail_path || `/jobs/${job.slug}`} className="text-zinc-100 hover:text-amber-400 transition-colors underline-offset-2 hover:underline">
                 {job.title}
               </a>
             </h2>
@@ -298,29 +295,47 @@ const JobCard = ({ job, onDeleteRequest, onShowMessage }) => {
         </span>
       </div>
 
-      <div className="text-zinc-400 whitespace-pre-wrap mb-4 text-sm leading-relaxed font-mono">
-        {displayContent}
-      </div>
+      {isHtml ? (
+        <div className="mb-4 relative">
+          <div
+            className={`job-description text-sm overflow-hidden transition-all ${expanded ? '' : 'max-h-28'}`}
+            dangerouslySetInnerHTML={{ __html: rawContent }}
+          />
+          {!expanded && isLong && <div className="absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-zinc-900 to-transparent pointer-events-none" />}
+        </div>
+      ) : (
+        <div className="text-zinc-400 whitespace-pre-wrap mb-4 text-sm leading-relaxed">
+          {expanded ? rawContent : rawContent.substring(0, 300) + (isLong ? '...' : '')}
+        </div>
+      )}
 
       {isLong && (
         <button
           onClick={() => setExpanded(!expanded)}
-          className="text-amber-500 hover:text-amber-400 text-sm font-semibold flex items-center mb-5 transition-colors"
+          className="text-amber-500 hover:text-amber-400 text-xs font-bold uppercase tracking-widest flex items-center mb-5 transition-colors"
           aria-expanded={expanded}
         >
           {expanded
-            ? <><ChevronUp className="w-4 h-4 mr-1" aria-hidden="true" /> Collapse report</>
-            : <><ChevronDown className="w-4 h-4 mr-1" aria-hidden="true" /> Read full report</>}
+            ? <><ChevronUp className="w-3 h-3 mr-1" aria-hidden="true" /> Show less</>
+            : <><ChevronDown className="w-3 h-3 mr-1" aria-hidden="true" /> Read full posting</>}
         </button>
       )}
 
       <div className="flex justify-between items-center mt-5 pt-5 border-t border-zinc-800/50">
-        <button
-          onClick={handleApply}
-          className="bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold uppercase tracking-wide text-sm py-2.5 px-8 rounded-md transition-all active:scale-95"
-        >
-          Apply Now
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleApply}
+            className="bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold uppercase tracking-wide text-sm py-2.5 px-6 rounded-md transition-all active:scale-95"
+          >
+            Apply Now
+          </button>
+          <a
+            href={job.detail_path || `/jobs/${job.slug}`}
+            className="text-zinc-400 hover:text-amber-400 text-xs font-bold uppercase tracking-widest transition-colors flex items-center gap-1"
+          >
+            View Posting →
+          </a>
+        </div>
         {onDeleteRequest && (
           <button
             onClick={() => onDeleteRequest(job.id)}
@@ -1360,7 +1375,7 @@ export default function App() {
               </button>
               <button
                 onClick={() => setCurrentView('edit')}
-                className="text-zinc-500 hover:text-zinc-300 px-3 py-2 rounded font-bold text-xs uppercase tracking-wide transition"
+                className="border border-zinc-700 hover:border-zinc-500 text-zinc-400 hover:text-zinc-100 px-4 py-2 rounded font-bold text-xs uppercase tracking-wide transition"
               >
                 Edit Listing
               </button>
