@@ -70,12 +70,14 @@ export async function onRequestGet({ request, env, params }) {
       .meta { color: #a1a1aa; display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 28px; }
       .panel { border: 1px solid #27272a; border-radius: 8px; background: #18181b; padding: 22px; margin: 22px 0; }
       .description { line-height: 1.65; color: #d4d4d8; }
-      .description h2 { font-size: 1.15rem; font-weight: 700; margin: 1rem 0 0.4rem; color: #f4f4f5; }
-      .description h3 { font-size: 1rem; font-weight: 700; margin: 0.75rem 0 0.3rem; color: #f4f4f5; }
-      .description ul { list-style: disc; padding-left: 1.5rem; margin: 0.5rem 0; }
-      .description ol { list-style: decimal; padding-left: 1.5rem; margin: 0.5rem 0; }
-      .description li { margin: 0.2rem 0; }
-      .description p { margin: 0.4rem 0; }
+      .description h2 { font-size: 0.7rem; font-weight: 700; margin: 1.75rem 0 0.6rem; color: #f59e0b; text-transform: uppercase; letter-spacing: 0.1em; padding-top: 1rem; border-top: 1px solid #27272a; }
+      .description h2:first-child { margin-top: 0; padding-top: 0; border-top: none; }
+      .description h3 { font-size: 0.95rem; font-weight: 700; margin: 1rem 0 0.35rem; color: #e4e4e7; }
+      .description ul { list-style: disc; padding-left: 1.5rem; margin: 0.25rem 0 1rem; }
+      .description ol { list-style: decimal; padding-left: 1.5rem; margin: 0.25rem 0 1rem; }
+      .description li { margin: 0.35rem 0; color: #d4d4d8; line-height: 1.5; }
+      .description p { margin: 0 0 0.75rem; color: #d4d4d8; }
+      .description strong { color: #f4f4f5; font-weight: 700; }
       .button { display: inline-block; background: #f59e0b; color: #09090b; text-decoration: none; padding: 13px 20px; border-radius: 6px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
     </style>
   </head>

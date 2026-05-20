@@ -83,6 +83,14 @@ const dbService = {
     method: 'PATCH',
     body: { job, code, jobData },
   }),
+
+  logEvent: (event, metadata) => fetch('/api/events', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ event, metadata }),
+  }).catch(() => {}),
+
+  getEvents: () => apiRequest('/api/events', { admin: true }),
 };
 
 const US_STATES = [
@@ -703,7 +711,7 @@ const JobForm = ({ onSave, onDirectSave, onCancel, onShowMessage, initialJob = n
         )}
         <div className="flex justify-end space-x-4">
           <button onClick={onCancel} className="px-6 py-2.5 rounded-md font-bold uppercase tracking-wide text-zinc-400 hover:text-zinc-100 transition-colors">Cancel</button>
-          <button onClick={handlePaymentAndSave} disabled={isProcessing} className="px-8 py-2.5 bg-amber-500 text-zinc-950 font-bold uppercase tracking-wide rounded-md hover:bg-amber-400 transition-colors active:scale-[0.98] disabled:opacity-50">
+          <button onClick={() => { dbService.logEvent('submit_click'); handlePaymentAndSave(); }} disabled={isProcessing} className="px-8 py-2.5 bg-amber-500 text-zinc-950 font-bold uppercase tracking-wide rounded-md hover:bg-amber-400 transition-colors active:scale-[0.98] disabled:opacity-50">
             {isProcessing ? 'Saving...' : mode === 'edit' ? 'Save Updates' : 'Post Job →'}
           </button>
         </div>
@@ -835,6 +843,7 @@ const EditPostGateway = ({ initialJobKey = '', onCancel, onShowMessage, onSaved 
 // --- ADMIN DASHBOARD ---
 const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh }) => {
   const [activeTab, setActiveTab] = useState('aggregator');
+  const [eventStats, setEventStats] = useState(null);
   const [isScanning, setIsScanning] = useState(false);
   const [scrapedJobs, setScrapedJobs] = useState([]);
   const [scanQuery, setScanQuery] = useState('Crime Scene Cleanup');
@@ -968,6 +977,14 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh }) => {
         >
           <Database className="w-4 h-4 inline mr-2 mb-0.5" aria-hidden="true" /> Live Database ({jobs.length})
         </button>
+        <button
+          role="tab"
+          aria-selected={activeTab === 'analytics'}
+          onClick={() => { setActiveTab('analytics'); if (!eventStats) dbService.getEvents().then(d => setEventStats(d)).catch(() => {}); }}
+          className={`flex-1 py-4 text-sm font-bold uppercase tracking-widest transition-colors ${activeTab === 'analytics' ? 'text-amber-500 border-b-2 border-amber-500 bg-zinc-900' : 'text-zinc-500 hover:text-zinc-300'}`}
+        >
+          <Activity className="w-4 h-4 inline mr-2 mb-0.5" aria-hidden="true" /> Analytics
+        </button>
       </div>
 
       <div className="p-8 min-h-[500px]">
@@ -1069,6 +1086,43 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh }) => {
                 </div>
               </div>
             )}
+          </div>
+        ) : activeTab === 'analytics' ? (
+          <div role="tabpanel">
+            <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-6">Last 30 Days — Funnel</h3>
+            {!eventStats ? (
+              <p className="text-zinc-500 font-mono text-sm">Loading...</p>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
+                {[
+                  { key: 'submit_click', label: 'Submit Clicks', color: 'text-zinc-100' },
+                  { key: 'payment_initiated', label: 'Stripe Redirects', color: 'text-amber-400' },
+                  { key: 'payment_completed', label: 'Payments Returned', color: 'text-blue-400' },
+                  { key: 'job_posted', label: 'Jobs Posted', color: 'text-green-400' },
+                ].map(({ key, label, color }) => {
+                  const row = eventStats.events?.find(e => e.event === key);
+                  return (
+                    <div key={key} className="bg-zinc-950 border border-zinc-800 rounded-lg p-5">
+                      <p className={`text-3xl font-black font-mono ${color}`}>{row?.count ?? 0}</p>
+                      <p className="text-xs text-zinc-500 uppercase tracking-widest mt-1">{label}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-5">
+              <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-3">Live DB by Status</h4>
+              <div className="flex gap-6">
+                {['active', 'pending', 'rejected'].map(s => (
+                  <div key={s}>
+                    <p className={`text-2xl font-black font-mono ${s === 'active' ? 'text-green-400' : s === 'pending' ? 'text-amber-400' : 'text-zinc-500'}`}>
+                      {jobs.filter(j => j.status === s).length}
+                    </p>
+                    <p className="text-xs text-zinc-500 uppercase tracking-widest">{s}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         ) : (
           <div className="space-y-2" role="tabpanel">
@@ -1180,6 +1234,7 @@ export default function App() {
     const pending = sessionStorage.getItem('pendingJob');
     if (!pending) { setCurrentView('post'); return; }
     sessionStorage.removeItem('pendingJob');
+    dbService.logEvent('payment_completed');
     submitJob(JSON.parse(pending));
   }, []);
 
@@ -1239,7 +1294,8 @@ export default function App() {
       const result = await dbService.addJob(newJob, { publish: publish ?? isAdmin });
       const saved = result.job;
       if (saved.status === 'active' && saved.slug) {
-        setPostedJob({ slug: saved.slug, editCode: result.edit?.edit_code || '' });
+        dbService.logEvent('job_posted', { slug: saved.slug });
+        setPostedJob({ slug: saved.slug, editCode: result.edit?.edit_code || '', emailed: result.edit?.emailed });
         setCurrentView('posted');
         return;
       }
@@ -1254,6 +1310,7 @@ export default function App() {
   const handleAddJob = async (newJob) => {
     if (isAdmin) { await submitJob(newJob); return; }
     sessionStorage.setItem('pendingJob', JSON.stringify(newJob));
+    dbService.logEvent('payment_initiated');
     window.location.href = 'https://buy.stripe.com/6oU14mbCsbzo2sOb7G24000';
   };
 
@@ -1301,6 +1358,12 @@ export default function App() {
               >
                 <PlusCircle className="w-4 h-4 sm:mr-2 text-amber-500" aria-hidden="true" /> <span className="hidden sm:inline">Post a Job</span>
               </button>
+              <button
+                onClick={() => setCurrentView('edit')}
+                className="text-zinc-500 hover:text-zinc-300 px-3 py-2 rounded font-bold text-xs uppercase tracking-wide transition"
+              >
+                Edit Listing
+              </button>
             </div>
           </div>
         </nav>
@@ -1333,20 +1396,33 @@ export default function App() {
           <div className="max-w-lg mx-auto mt-16 text-center">
             <div className="text-5xl mb-4">✅</div>
             <h2 className="text-3xl font-black uppercase tracking-tighter text-zinc-100 mb-2">Your listing is live!</h2>
-            <p className="text-zinc-400 font-mono mb-8">It's indexed in Google Jobs and searchable on the site.</p>
-            {postedJob.editCode && (
-              <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-4 mb-6 text-left">
-                <p className="text-xs text-zinc-500 uppercase tracking-widest mb-1">Your edit code — save this</p>
-                <p className="font-mono text-amber-400 text-lg tracking-widest">{postedJob.editCode}</p>
-                <p className="text-xs text-zinc-500 mt-2">Also sent to your email. Use it to edit your listing anytime.</p>
-              </div>
-            )}
+            <p className="text-zinc-400 font-mono mb-6">Indexed in Google Jobs and searchable by biohazard cleanup pros nationwide.</p>
+            <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-4 mb-6 text-left">
+              {postedJob.editCode ? (
+                <>
+                  <p className="text-xs text-zinc-500 uppercase tracking-widest mb-1">Your edit code — save this</p>
+                  <p className="font-mono text-amber-400 text-lg tracking-widest mb-2">{postedJob.editCode}</p>
+                  <p className="text-xs text-zinc-500">{postedJob.emailed ? 'Also sent to your email.' : 'Email delivery unavailable — save this code now.'} Use it to edit your listing anytime.</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs text-zinc-500 uppercase tracking-widest mb-1">Edit code</p>
+                  <p className="text-xs text-zinc-400">Your edit code was sent to the email you provided. Use it to make changes to your listing.</p>
+                </>
+              )}
+            </div>
             <a
               href={`/jobs/${postedJob.slug}`}
-              className="inline-block bg-amber-500 hover:bg-amber-400 text-zinc-950 font-black uppercase tracking-wide px-8 py-3 rounded transition mb-4 w-full text-center"
+              className="inline-block bg-amber-500 hover:bg-amber-400 text-zinc-950 font-black uppercase tracking-wide px-8 py-3 rounded transition mb-3 w-full text-center"
             >
               View Your Listing
             </a>
+            <button
+              onClick={() => { setEditTarget(postedJob.slug); setCurrentView('edit'); }}
+              className="inline-block border border-zinc-700 hover:border-zinc-500 text-zinc-400 hover:text-zinc-100 font-bold uppercase tracking-wide px-8 py-3 rounded transition mb-4 w-full text-center text-sm"
+            >
+              Edit Your Listing
+            </button>
             <button onClick={() => setCurrentView('home')} className="text-xs text-zinc-500 hover:text-zinc-300 uppercase tracking-widest block w-full">
               Back to Home
             </button>

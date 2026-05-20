@@ -9,6 +9,7 @@ import { onRequestPost as requestEditCode } from '../functions/api/edit-codes/re
 import { onRequestPost as verifyEditCode } from '../functions/api/edit-codes/verify.js';
 import { onRequestPatch as updateWithEditCode } from '../functions/api/edit-codes/update.js';
 import { onRequestPost as verifyPromo } from '../functions/api/checkout/verify-promo.js';
+import { onRequestPost as logEvent, onRequestGet as getEvents } from '../functions/api/events.js';
 import { onRequestPost as requestIndexing } from '../functions/api/admin/indexing.js';
 import { onRequestGet as getGoogleJobsFeed } from '../functions/api/google/jobs.json.js';
 import { onRequestGet as getSitemap } from '../functions/sitemap.xml.js';
@@ -85,6 +86,12 @@ async function routeRequest(request, env, ctx) {
 
   if (pathname === '/api/checkout/verify-promo' && method === 'POST') {
     return run(verifyPromo, request, env, ctx);
+  }
+
+  if (pathname === '/api/events') {
+    if (method === 'POST') return run(logEvent, request, env, ctx);
+    if (method === 'GET') return run(getEvents, request, env, ctx);
+    return methodNotAllowed();
   }
 
   if (pathname === '/api/admin/scan' && method === 'POST') {
