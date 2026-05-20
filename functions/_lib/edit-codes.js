@@ -80,7 +80,9 @@ async function sendEditCodeEmail(env, { to, code, job, siteUrl, expiresAt }) {
 
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    return { sent: false, error: payload.message || `Resend failed with ${response.status}` };
+    const error = payload.message || payload.name || `Resend failed with ${response.status}`;
+    console.error('[email] Resend error:', response.status, JSON.stringify(payload));
+    return { sent: false, error };
   }
   return { sent: true, provider: 'resend', id: payload.id || '' };
 }

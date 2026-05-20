@@ -1295,7 +1295,7 @@ export default function App() {
       const saved = result.job;
       if (saved.status === 'active' && saved.slug) {
         dbService.logEvent('job_posted', { slug: saved.slug });
-        setPostedJob({ slug: saved.slug, editCode: result.edit?.edit_code || '', emailed: result.edit?.emailed });
+        setPostedJob({ slug: saved.slug, editCode: result.edit?.edit_code || '', emailed: result.edit?.emailed, emailError: result.edit?.email?.error || '' });
         setCurrentView('posted');
         return;
       }
@@ -1402,7 +1402,7 @@ export default function App() {
                 <>
                   <p className="text-xs text-zinc-500 uppercase tracking-widest mb-1">Your edit code — save this</p>
                   <p className="font-mono text-amber-400 text-lg tracking-widest mb-2">{postedJob.editCode}</p>
-                  <p className="text-xs text-zinc-500">{postedJob.emailed ? 'Also sent to your email.' : 'Email delivery unavailable — save this code now.'} Use it to edit your listing anytime.</p>
+                  <p className="text-xs text-zinc-500">{postedJob.emailed ? 'Also sent to your email.' : `Email not sent${postedJob.emailError ? `: ${postedJob.emailError}` : ' — save this code now'}. `}Use it to edit your listing anytime.</p>
                 </>
               ) : (
                 <>
