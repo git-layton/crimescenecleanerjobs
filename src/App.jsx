@@ -120,6 +120,48 @@ const formatPay = (min, max, type) => {
   return `${str} ${type !== 'Pay Type Not Specified' ? type : ''}`.trim();
 };
 
+const inlineMd = (text) => text
+  .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+  .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+  .replace(/__(.+?)__/g, '<strong>$1</strong>')
+  .replace(/\*([^*\n]+?)\*/g, '<em>$1</em>')
+  .replace(/_([^_\n]+?)_/g, '<em>$1</em>');
+
+const markdownToHtml = (text) => {
+  if (!text) return '';
+  if (/<[a-z][\s\S]*>/i.test(text)) return text; // already HTML
+  const lines = text.split(/\r?\n/);
+  const out = [];
+  let inUl = false;
+  let inOl = false;
+  const closeList = () => {
+    if (inUl) { out.push('</ul>'); inUl = false; }
+    if (inOl) { out.push('</ol>'); inOl = false; }
+  };
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) { closeList(); continue; }
+    if (/^#{1,2}\s+/.test(line)) {
+      closeList();
+      out.push(`<h2>${inlineMd(line.replace(/^#+\s+/, ''))}</h2>`);
+    } else if (/^###\s+/.test(line)) {
+      closeList();
+      out.push(`<h3>${inlineMd(line.replace(/^###\s+/, ''))}</h3>`);
+    } else if (/^[-*]\s+/.test(line)) {
+      if (!inUl) { closeList(); out.push('<ul>'); inUl = true; }
+      out.push(`<li>${inlineMd(line.replace(/^[-*]\s+/, ''))}</li>`);
+    } else if (/^\d+\.\s+/.test(line)) {
+      if (!inOl) { closeList(); out.push('<ol>'); inOl = true; }
+      out.push(`<li>${inlineMd(line.replace(/^\d+\.\s+/, ''))}</li>`);
+    } else {
+      closeList();
+      out.push(`<p>${inlineMd(line)}</p>`);
+    }
+  }
+  closeList();
+  return out.join('');
+};
+
 const formStateFromJob = (job = {}) => ({
   title: job.title || '',
   company: job.company || '',
@@ -341,6 +383,8 @@ const JobForm = ({ onSave, onDirectSave, onCancel, onShowMessage, initialJob = n
   const [isDragging, setIsDragging] = useState(false);
   const [promoCode, setPromoCode] = useState('');
   const [showPromo, setShowPromo] = useState(false);
+  const [promoValid, setPromoValid] = useState(false);
+  const [promoChecking, setPromoChecking] = useState(false);
   const [parseKey, setParseKey] = useState(0);
   const [errors, setErrors] = useState({});
   const [step, setStep] = useState(mode === 'edit' ? 2 : 1);
@@ -360,13 +404,13 @@ const JobForm = ({ onSave, onDirectSave, onCancel, onShowMessage, initialJob = n
         ...prev,
         ...parsed,
         owner_email: prev.owner_email || inferredEmail,
-        content: parsed.content || aiText,
+        content: markdownToHtml(parsed.content || aiText),
       }));
       setParseKey(k => k + 1);
       setStep(2);
     } catch (error) {
       onShowMessage('Parser Offline', `${error.message}. You can still finish the listing manually.`, 'info');
-      setFormData(prev => ({ ...prev, content: aiText }));
+      setFormData(prev => ({ ...prev, content: markdownToHtml(aiText) }));
       setStep(2);
     } finally {
       setIsProcessing(false);
@@ -409,19 +453,44 @@ const JobForm = ({ onSave, onDirectSave, onCancel, onShowMessage, initialJob = n
     return e;
   };
 
+  const handleApplyPromo = async () => {
+    if (!promoCode.trim()) return;
+    setPromoChecking(true);
+    try {
+      const res = await fetch('/api/checkout/verify-promo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: promoCode.trim() }),
+      });
+      const { valid } = await res.json();
+      if (valid) {
+        setPromoValid(true);
+      } else {
+        setPromoValid(false);
+        onShowMessage('Invalid Code', 'That promo code is not valid.', 'info');
+      }
+    } finally {
+      setPromoChecking(false);
+    }
+  };
+
   const handlePaymentAndSave = async () => {
     const errs = validate();
     if (Object.keys(errs).length) { setErrors(errs); return; }
     setIsProcessing(true);
     try {
       if (promoCode.trim()) {
-        const res = await fetch('/api/checkout/verify-promo', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code: promoCode.trim() }),
-        });
-        const { valid } = await res.json();
+        const valid = promoValid || await (async () => {
+          const res = await fetch('/api/checkout/verify-promo', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code: promoCode.trim() }),
+          });
+          const { valid: v } = await res.json();
+          return v;
+        })();
         if (valid) {
+          setPromoValid(true);
           await onDirectSave({ ...formData, created: new Date().toISOString() });
           return;
         }
@@ -581,14 +650,26 @@ const JobForm = ({ onSave, onDirectSave, onCancel, onShowMessage, initialJob = n
           <div className="mb-4">
             {!showPromo ? (
               <button onClick={() => setShowPromo(true)} className="text-xs text-zinc-600 hover:text-zinc-400 transition-colors">Have a promo code?</button>
+            ) : promoValid ? (
+              <span className="text-green-400 text-sm font-mono">✓ Promo code applied — Stripe skipped</span>
             ) : (
-              <input
-                type="text"
-                value={promoCode}
-                onChange={e => setPromoCode(e.target.value)}
-                placeholder="Enter promo code"
-                className="w-48 p-2 bg-zinc-950 border border-zinc-700 rounded text-zinc-300 text-sm focus:outline-none focus:border-amber-500"
-              />
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={promoCode}
+                  onChange={e => { setPromoCode(e.target.value); setPromoValid(false); }}
+                  onKeyDown={e => e.key === 'Enter' && handleApplyPromo()}
+                  placeholder="Enter promo code"
+                  className="w-48 p-2 bg-zinc-950 border border-zinc-700 rounded text-zinc-300 text-sm focus:outline-none focus:border-amber-500"
+                />
+                <button
+                  onClick={handleApplyPromo}
+                  disabled={promoChecking || !promoCode.trim()}
+                  className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-zinc-300 text-sm rounded transition-colors"
+                >
+                  {promoChecking ? '...' : 'Apply'}
+                </button>
+              </div>
             )}
           </div>
         )}
@@ -1128,9 +1209,9 @@ export default function App() {
     setCurrentView('admin');
   };
 
-  const submitJob = async (newJob) => {
+  const submitJob = async (newJob, { publish } = {}) => {
     try {
-      const result = await dbService.addJob(newJob, { publish: isAdmin });
+      const result = await dbService.addJob(newJob, { publish: publish ?? isAdmin });
       const saved = result.job;
       if (saved.status === 'active' && saved.slug) {
         setPostedJob({ slug: saved.slug, editCode: result.edit?.edit_code || '' });
@@ -1152,7 +1233,7 @@ export default function App() {
   };
 
   const handleAddJobDirect = async (newJob) => {
-    await submitJob(newJob);
+    await submitJob(newJob, { publish: true });
   };
 
   const requestDeleteJob = (id) => {
