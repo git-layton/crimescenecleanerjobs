@@ -7,6 +7,12 @@ function clean(value, max = 5000) {
   return String(value).replace(/\s+/g, ' ').trim().slice(0, max);
 }
 
+// Strip leading AI-generated preamble lines before actual job content
+function stripPreamble(text) {
+  const preambleRe = /^(here\s+is|here'?s|sure[!,]|below\s+is|i'?ve?\s+created|i'?ll\s+create|this\s+is\s+a|i\s+have\s+created|as\s+requested|of\s+course)[^\n]*/i;
+  return text.replace(preambleRe, '').replace(/^\s*[-—–*]{3,}\s*/m, '').trim();
+}
+
 function getLine(rawText, matcher) {
   const lines = String(rawText || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean);
   return lines.find(matcher) || '';
@@ -66,7 +72,7 @@ function heuristicParse(rawText, hints = {}) {
     pay_max: hints.pay_max ?? pay.pay_max,
     pay_type: hints.pay_type || pay.pay_type,
     employment_type: hints.employment_type || parseEmploymentType(text),
-    description: clean(text, 12000),
+    description: stripPreamble(text).slice(0, 12000),
     apply_url: clean(hints.apply_url || url || '', 1000),
     contact_email: clean(hints.contact_email || email || '', 320),
     source_url: clean(hints.source_url || url || '', 1000),
@@ -139,7 +145,7 @@ Return ONLY a raw JSON object. No markdown, no code fences, no explanation.`,
       messages: [
         {
           role: 'user',
-          content: `Extract and rewrite this job listing:\n\n${String(rawText || '').slice(0, 16000)}`,
+          content: `Extract and rewrite this job listing:\n\n${stripPreamble(String(rawText || '')).slice(0, 16000)}`,
         },
       ],
     }),
@@ -151,8 +157,9 @@ Return ONLY a raw JSON object. No markdown, no code fences, no explanation.`,
   }
 
   const payload = await response.json();
-  const text = payload.content?.[0]?.text || '';
-  const parsed = JSON.parse(text || '{}');
+  const raw = (payload.content?.[0]?.text || '')
+    .replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
+  const parsed = JSON.parse(raw || '{}');
   return { ...fallback, ...parsed, confidence: Number(parsed.confidence ?? fallback.confidence) };
 }
 

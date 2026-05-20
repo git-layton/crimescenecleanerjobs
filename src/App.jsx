@@ -127,10 +127,19 @@ const inlineMd = (text) => text
   .replace(/\*([^*\n]+?)\*/g, '<em>$1</em>')
   .replace(/_([^_\n]+?)_/g, '<em>$1</em>');
 
+const stripMdPreamble = (text) =>
+  text.replace(/^(here\s+is|here'?s|sure[!,]|below\s+is|i'?ve?\s+created|i'?ll\s+create|this\s+is\s+a|as\s+requested|of\s+course)[^\n]*/i, '')
+      .replace(/^\s*[-—–*]{3,}\s*/m, '').trim();
+
 const markdownToHtml = (text) => {
   if (!text) return '';
-  if (/<[a-z][\s\S]*>/i.test(text)) return text; // already HTML
-  const lines = text.split(/\r?\n/);
+  if (/<[a-zA-Z][^>]*>/.test(text)) return text; // already HTML
+  const cleaned = stripMdPreamble(text);
+  // Normalize inline headings (no newline before them) into their own lines
+  const normalized = cleaned
+    .replace(/(?<!\n)(#{1,3}\s)/g, '\n$1')
+    .replace(/(?<!\n)(\*\*[A-Z][^*]+:\*\*)/g, '\n$1');
+  const lines = normalized.split(/\r?\n/);
   const out = [];
   let inUl = false;
   let inOl = false;
@@ -141,12 +150,12 @@ const markdownToHtml = (text) => {
   for (const raw of lines) {
     const line = raw.trim();
     if (!line) { closeList(); continue; }
-    if (/^#{1,2}\s+/.test(line)) {
-      closeList();
-      out.push(`<h2>${inlineMd(line.replace(/^#+\s+/, ''))}</h2>`);
-    } else if (/^###\s+/.test(line)) {
+    if (/^###\s+/.test(line)) {
       closeList();
       out.push(`<h3>${inlineMd(line.replace(/^###\s+/, ''))}</h3>`);
+    } else if (/^#{1,2}\s+/.test(line)) {
+      closeList();
+      out.push(`<h2>${inlineMd(line.replace(/^#+\s+/, ''))}</h2>`);
     } else if (/^[-*]\s+/.test(line)) {
       if (!inUl) { closeList(); out.push('<ul>'); inUl = true; }
       out.push(`<li>${inlineMd(line.replace(/^[-*]\s+/, ''))}</li>`);
