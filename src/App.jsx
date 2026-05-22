@@ -110,6 +110,7 @@ const dbService = {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
     });
+    if (response.status === 429) throw new Error('Too many attempts. Try again in 15 minutes.');
     return response.ok;
   },
 };
