@@ -73,8 +73,37 @@ async function discoverWithAdzuna(env, query, location) {
   }));
 }
 
+async function discoverWithIndeed(env, query, location) {
+  const q = encodeURIComponent(query);
+  const l = location && location.toLowerCase() !== 'nationwide' ? encodeURIComponent(location) : '';
+  const url = `https://www.indeed.com/rss?q=${q}&l=${l}&sort=date&fromage=30`;
+  const response = await fetch(url, {
+    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; JobBot/1.0)' },
+  });
+  if (!response.ok) return [];
+  const xml = await response.text();
+  const items = [];
+  const itemRe = /<item>([\s\S]*?)<\/item>/g;
+  let m;
+  while ((m = itemRe.exec(xml)) !== null) {
+    const block = m[1];
+    const get = (tag) => { const t = new RegExp(`<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/${tag}>|<${tag}[^>]*>([^<]*)<\\/${tag}>`).exec(block); return t ? (t[1] || t[2] || '').trim() : ''; };
+    const link = get('link') || get('guid');
+    if (!link || !link.startsWith('http')) continue;
+    items.push({
+      source_name: 'Indeed',
+      source_url: link,
+      title: get('title'),
+      company: get('source'),
+      snippet: get('description').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 800),
+    });
+  }
+  return items;
+}
+
 async function discoverJobs(env, query, location) {
   const providerResults = await Promise.allSettled([
+    discoverWithIndeed(env, query, location),
     discoverWithGoogle(env, query, location),
     discoverWithAdzuna(env, query, location),
   ]);
@@ -120,7 +149,11 @@ export async function runDailyImport(env, options = {}) {
       'hazmat cleanup technician',
     ]);
   const location = options.location || env.DEFAULT_SCAN_LOCATION || 'Nationwide';
-  const autoPublish = env.AUTO_PUBLISH_JOBS === 'true';
+  let autoPublish = options.autoPublish ?? (env.AUTO_PUBLISH_JOBS === 'true');
+  if (!autoPublish && env.DB) {
+    const setting = await env.DB.prepare(`SELECT value FROM site_settings WHERE key = 'auto_publish_jobs' LIMIT 1`).first().catch(() => null);
+    if (setting?.value === 'true') autoPublish = true;
+  }
   const publishThreshold = Number(env.AUTO_PUBLISH_CONFIDENCE || 0.92);
   const summary = { discovered: 0, candidates: 0, published: 0, skipped: 0, errors: [] };
   const allCandidates = [];

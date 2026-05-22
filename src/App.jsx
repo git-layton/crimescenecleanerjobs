@@ -102,6 +102,9 @@ const dbService = {
     body: jobData,
   }),
 
+  getSettings: () => apiRequest('/api/admin/settings', { admin: true }),
+  updateSettings: (patch) => apiRequest('/api/admin/settings', { method: 'PATCH', admin: true, body: patch }),
+
   verifyAdminToken: async (token) => {
     const response = await fetch('/api/admin/verify', {
       method: 'POST',
@@ -1078,6 +1081,7 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
   const [scanLocation, setScanLocation] = useState('Nationwide');
   const [scanHistory, setScanHistory] = useState(null);
   const [healthData, setHealthData] = useState(null);
+  const [autoPublish, setAutoPublish] = useState(false);
   const [dbSearch, setDbSearch] = useState('');
   const [dbStatusFilter, setDbStatusFilter] = useState('all');
   const [editingJob, setEditingJob] = useState(null);
@@ -1088,14 +1092,21 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
       dbService.listCandidates(),
       dbService.getScanHistory(),
       fetch('/api/health').then(r => r.json()),
-    ]).then(([candidates, history, health]) => {
+      dbService.getSettings(),
+    ]).then(([candidates, history, health, settings]) => {
       if (!isMounted) return;
       setScrapedJobs(candidates);
       setScanHistory(history.runs || []);
       setHealthData(health);
+      setAutoPublish(settings.settings?.auto_publish_jobs === 'true');
     }).catch(err => console.error('Admin init failed:', err));
     return () => { isMounted = false; };
   }, []);
+
+  const toggleAutoPublish = async (val) => {
+    setAutoPublish(val);
+    await dbService.updateSettings({ auto_publish_jobs: String(val) }).catch(() => setAutoPublish(!val));
+  };
 
   const runSourceScan = async () => {
     setIsScanning(true);
@@ -1201,11 +1212,24 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
                   <Cpu className="w-3.5 h-3.5 text-amber-500" /> Scheduled Scan
                 </h3>
                 <p className="text-sm text-zinc-100 font-mono mb-1">Daily at 9:00 AM UTC</p>
-                <p className="text-xs text-zinc-500">
+                <p className="text-xs text-zinc-500 mb-4">
                   Last run: {healthData?.last_scan_at
                     ? new Date(healthData.last_scan_at).toLocaleString()
                     : 'Never'}
                 </p>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold text-zinc-300">Auto-publish high confidence</p>
+                    <p className="text-[10px] text-zinc-600 mt-0.5">Publish jobs ≥92% confidence automatically</p>
+                  </div>
+                  <button
+                    onClick={() => toggleAutoPublish(!autoPublish)}
+                    aria-pressed={autoPublish}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 ${autoPublish ? 'bg-amber-500' : 'bg-zinc-700'}`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-zinc-100 transition-transform ${autoPublish ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                </div>
               </div>
               <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-5">
                 <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-3">Manual Scan</h3>

@@ -5,6 +5,7 @@ import { onRequestPost as scanJobs } from '../functions/api/admin/scan.js';
 import { onRequestGet as getScanHistory } from '../functions/api/admin/scan-history.js';
 import { onRequestGet as getAnalytics } from '../functions/api/admin/analytics.js';
 import { onRequestPost as verifyAdminToken } from '../functions/api/admin/verify.js';
+import { onRequestGet as getSettings, onRequestPatch as updateSettings } from '../functions/api/admin/settings.js';
 import { onRequestGet as getCandidates } from '../functions/api/admin/candidates/index.js';
 import { onRequestPost as approveCandidate } from '../functions/api/admin/candidates/[id]/approve.js';
 import { onRequestPost as rejectCandidate } from '../functions/api/admin/candidates/[id]/reject.js';
@@ -131,6 +132,12 @@ async function routeRequest(request, env, ctx) {
 
   if (pathname === '/api/admin/analytics' && method === 'GET') {
     return run(getAnalytics, request, env, ctx);
+  }
+
+  if (pathname === '/api/admin/settings') {
+    if (method === 'GET') return run(getSettings, request, env, ctx);
+    if (method === 'PATCH') return run(updateSettings, request, env, ctx);
+    return methodNotAllowed();
   }
 
   if (pathname === '/api/admin/candidates' && method === 'GET') {
