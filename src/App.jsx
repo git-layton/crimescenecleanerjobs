@@ -1998,40 +1998,6 @@ export default function App() {
               </div>
             </section>
 
-            <section className="mb-10" aria-label="Why post here">
-              <h2 className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-5">Why Post Here?</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                {[
-                  {
-                    icon: <Search className="w-5 h-5 text-amber-500" />,
-                    title: 'Google-Indexed Page',
-                    desc: 'Every listing gets a dedicated /jobs/slug URL, crawlable by Googlebot the same day it\'s published.',
-                  },
-                  {
-                    icon: <Cpu className="w-5 h-5 text-amber-500" />,
-                    title: 'AI-Optimized Listings',
-                    desc: 'Descriptions are rewritten for semantic search — discoverable by ChatGPT, Claude & Gemini, not just Google.',
-                  },
-                  {
-                    icon: <Target className="w-5 h-5 text-amber-500" />,
-                    title: 'Niche Audience',
-                    desc: 'Only biohazard and crime scene cleanup professionals visit this board. Zero noise, zero spam applications.',
-                  },
-                  {
-                    icon: <Clock className="w-5 h-5 text-amber-500" />,
-                    title: '45-Day Active Listing',
-                    desc: 'Your post stays live for 45 days. Edit anytime with your private code — no login required.',
-                  },
-                ].map(({ icon, title, desc }) => (
-                  <div key={title} className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 hover:border-amber-500/30 transition-colors">
-                    <div className="mb-3">{icon}</div>
-                    <h3 className="text-sm font-bold text-zinc-100 mb-2">{title}</h3>
-                    <p className="text-xs text-zinc-400 leading-relaxed">{desc}</p>
-                  </div>
-                ))}
-              </div>
-            </section>
-
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
               <div className="lg:hidden flex justify-between items-center mb-2">
                 <p className="text-sm font-bold text-zinc-500 uppercase tracking-widest">
