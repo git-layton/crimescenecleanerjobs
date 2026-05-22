@@ -2109,7 +2109,6 @@ export default function App() {
               <input
                 name="token"
                 type="password"
-                defaultValue={adminToken || ''}
                 placeholder="Admin token"
                 autoFocus
                 disabled={adminLoginLoading}
