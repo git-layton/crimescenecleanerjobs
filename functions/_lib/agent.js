@@ -186,12 +186,16 @@ export async function runDailyImport(env, options = {}) {
           const sourceText = env.FETCH_SOURCE_PAGES === 'true'
             ? await fetchSourceText(item.source_url)
             : '';
+          // Prior confidence by source: Adzuna provides structured job data (high prior),
+          // Brave/Google return web pages that may or may not be job listings (low prior).
+          // The AI parser overrides this with its own assessment — prior only affects heuristic fallback.
+          const priorConfidence = item.source_name === 'Adzuna' ? 0.75 : 0.40;
           const parsed = await parseJobText(env, sourceText || item.snippet || item.title, {
             ...item,
             source_type: 'import',
             source_url: item.source_url,
             source_name: item.source_name,
-            confidence: item.source_name === 'Adzuna' ? 0.82 : 0.55,
+            confidence: priorConfidence,
           });
 
           const payload = {

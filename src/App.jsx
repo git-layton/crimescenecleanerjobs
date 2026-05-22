@@ -65,6 +65,11 @@ const dbService = {
     return data.candidates || [];
   },
 
+  getCandidatesByRun: async (runId) => {
+    const data = await apiRequest(`/api/admin/candidates?run_id=${runId}`, { admin: true });
+    return data.candidates || [];
+  },
+
   approveCandidate: async (id) => apiRequest(`/api/admin/candidates/${id}/approve`, { method: 'POST', admin: true }),
 
   rejectCandidate: async (id) => apiRequest(`/api/admin/candidates/${id}/reject`, { method: 'POST', admin: true }),
@@ -1089,6 +1094,8 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
   const [newQuery, setNewQuery] = useState('');
   const [editingQueryIdx, setEditingQueryIdx] = useState(null);
   const [editingQueryVal, setEditingQueryVal] = useState('');
+  const [expandedRuns, setExpandedRuns] = useState({});
+  const [runCandidates, setRunCandidates] = useState({});
   const [dbSearch, setDbSearch] = useState('');
   const [dbStatusFilter, setDbStatusFilter] = useState('all');
   const [editingJob, setEditingJob] = useState(null);
@@ -1356,28 +1363,6 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
               </div>
             </div>
 
-            {scanHistory && scanHistory.length > 0 && (
-              <div>
-                <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-3">Recent Scan History</h3>
-                <div className="space-y-2">
-                  {scanHistory.map(run => (
-                    <div key={run.id} className="bg-zinc-950 border border-zinc-800 rounded px-4 py-3 flex items-center justify-between">
-                      <div>
-                        <p className="text-xs text-zinc-300 font-mono">{run.started_at ? new Date(run.started_at).toLocaleString() : '—'}</p>
-                        <p className="text-[10px] text-zinc-600 mt-0.5">{run.query}</p>
-                      </div>
-                      <div className="flex items-center gap-4 text-[10px] font-mono">
-                        <span className="text-zinc-400">{run.discovered_count ?? 0} found</span>
-                        <span className="text-amber-400">{run.candidate_count ?? 0} queued</span>
-                        <span className="text-green-400">{run.published_count ?? 0} published</span>
-                        <span className={`font-bold uppercase ${run.status === 'complete' ? 'text-green-500' : run.status === 'running' ? 'text-amber-500' : 'text-red-400'}`}>{run.status}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
             {scrapedJobs.length > 0 && (
               <div>
                 <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-3 border-t border-zinc-800 pt-4">
@@ -1438,6 +1423,67 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
                                 <div className="text-zinc-400 leading-relaxed max-h-40 overflow-y-auto prose-sm" dangerouslySetInnerHTML={{ __html: payload.description.slice(0, 600) + (payload.description.length > 600 ? '…' : '') }} />
                               </div>
                             )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {scanHistory && scanHistory.length > 0 && (
+              <div>
+                <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-3 border-t border-zinc-800 pt-4">Scan History</h3>
+                <div className="space-y-2">
+                  {scanHistory.map(run => {
+                    const isOpen = expandedRuns[run.id];
+                    const candidates = runCandidates[run.id];
+                    return (
+                      <div key={run.id} className={`bg-zinc-950 border rounded-lg transition-colors ${isOpen ? 'border-zinc-700' : 'border-zinc-800'}`}>
+                        <button
+                          onClick={async () => {
+                            const nowOpen = !isOpen;
+                            setExpandedRuns(prev => ({ ...prev, [run.id]: nowOpen }));
+                            if (nowOpen && !candidates) {
+                              const rows = await dbService.getCandidatesByRun(run.id).catch(() => []);
+                              setRunCandidates(prev => ({ ...prev, [run.id]: rows }));
+                            }
+                          }}
+                          className="w-full px-4 py-3 flex items-center justify-between text-left"
+                        >
+                          <div>
+                            <p className="text-xs text-zinc-300 font-mono">{run.started_at ? new Date(run.started_at).toLocaleString() : '—'}</p>
+                            <p className="text-[10px] text-zinc-600 mt-0.5 truncate max-w-xs">{run.query}</p>
+                          </div>
+                          <div className="flex items-center gap-3 text-[10px] font-mono shrink-0 ml-3">
+                            <span className="text-zinc-500">{run.discovered_count ?? 0} found</span>
+                            <span className="text-amber-400">{run.candidate_count ?? 0} queued</span>
+                            <span className="text-green-400">{run.published_count ?? 0} published</span>
+                            <span className={`font-bold uppercase ${run.status === 'complete' ? 'text-green-500' : run.status === 'running' ? 'text-amber-500' : 'text-red-400'}`}>{run.status}</span>
+                            <ChevronDown className={`w-3.5 h-3.5 text-zinc-600 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                          </div>
+                        </button>
+                        {isOpen && (
+                          <div className="border-t border-zinc-800 p-3 space-y-2">
+                            {!candidates
+                              ? <p className="text-zinc-600 text-xs font-mono text-center py-2">Loading…</p>
+                              : candidates.length === 0
+                                ? <p className="text-zinc-600 text-xs font-mono text-center py-2">No candidates stored for this run.</p>
+                                : candidates.map(c => {
+                                  const p = c.payload || {};
+                                  const conf = Math.round(Number(c.confidence || 0) * 100);
+                                  const statusColor = { pending: 'text-amber-400', approved: 'text-green-400', rejected: 'text-zinc-600' }[c.status] || 'text-zinc-500';
+                                  return (
+                                    <div key={c.id} className="flex items-center gap-3 px-3 py-2 bg-zinc-900 rounded border border-zinc-800 text-xs">
+                                      <span className={`font-mono shrink-0 ${conf >= 80 ? 'text-green-400' : conf >= 60 ? 'text-amber-400' : 'text-red-400'}`}>{conf}%</span>
+                                      <span className="text-zinc-200 flex-1 truncate">{p.title || c.source_url || '—'}</span>
+                                      <span className="text-zinc-500 shrink-0">{p.company || ''}</span>
+                                      <span className={`font-bold uppercase shrink-0 ${statusColor}`}>{c.status}</span>
+                                      {c.source_url && <a href={c.source_url} target="_blank" rel="noreferrer" className="text-amber-500 hover:text-amber-400 shrink-0">↗</a>}
+                                    </div>
+                                  );
+                                })}
                           </div>
                         )}
                       </div>
