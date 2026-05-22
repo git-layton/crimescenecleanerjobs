@@ -121,7 +121,7 @@ Do NOT use markdown, asterisks, hashes, or plain text. Every section must be val
 Required structure — include all sections that have real source data:
 
 <h2>About the Role</h2>
-<p>2–3 punchy sentences. Lead with what makes this role compelling. Include the job title, company name, and location naturally for SEO. Use industry keywords (e.g. "biohazard remediation", "crime scene cleanup", "trauma cleaning").</p>
+<p>2–3 punchy sentences. Lead with what makes this role compelling. Include the job title, company name, and location naturally for SEO. Use industry keywords (e.g. ${env.SITE_KEYWORDS || 'relevant industry keywords'}).</p>
 
 <h2>What You'll Do</h2>
 <ul><li>Specific, active-voice responsibilities from the source. Each bullet starts with a verb.</li></ul>
@@ -133,7 +133,7 @@ Required structure — include all sections that have real source data:
 <p>Include only if real pay/benefits data exists in source. Do not invent figures.</p>
 
 SEO rules:
-- Naturally include terms like: crime scene cleanup, biohazard remediation, trauma cleaning, hazmat technician, [city] [state]
+- Naturally include terms like: ${env.SITE_KEYWORDS || 'industry keywords'}, [city] [state]
 - Write for humans first, search engines second
 - Avoid generic filler phrases ("join our team", "fast-paced environment")
 - Active voice throughout, no passive constructions

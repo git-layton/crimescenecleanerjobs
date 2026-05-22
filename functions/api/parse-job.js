@@ -1,4 +1,4 @@
-import { json, problem, readJson } from '../_lib/http.js';
+import { getIp, isRateLimited, json, problem, readJson } from '../_lib/http.js';
 import { parseJobText } from '../_lib/ai.js';
 
 function toFormJob(parsed) {
@@ -25,6 +25,11 @@ function toFormJob(parsed) {
 }
 
 export async function onRequestPost({ request, env }) {
+  // 20 AI parses per IP per hour
+  if (await isRateLimited(env, `rl:parse:${getIp(request)}`, 20, 3600)) {
+    return problem(429, 'Too many requests. Try again later.');
+  }
+
   const body = await readJson(request);
   const text = body.text || body.rawText || '';
   if (!text.trim()) return problem(400, 'Paste job text before parsing.');

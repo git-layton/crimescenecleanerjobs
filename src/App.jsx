@@ -91,6 +91,24 @@ const dbService = {
   }).catch(() => {}),
 
   getEvents: () => apiRequest('/api/events', { admin: true }),
+
+  getScanHistory: () => apiRequest('/api/admin/scan-history', { admin: true }),
+
+  getAnalytics: () => apiRequest('/api/admin/analytics', { admin: true }),
+
+  updateJobFull: async (id, jobData) => apiRequest(`/api/jobs/${id}`, {
+    method: 'PATCH',
+    admin: true,
+    body: jobData,
+  }),
+
+  verifyAdminToken: async (token) => {
+    const response = await fetch('/api/admin/verify', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return response.ok;
+  },
 };
 
 const US_STATES = [
@@ -179,6 +197,17 @@ const markdownToHtml = (text) => {
   return out.join('');
 };
 
+const sanitizeHtml = (raw) => String(raw || '')
+  .replace(/<script[\s\S]*?<\/script>/gi, '')
+  .replace(/<style[\s\S]*?<\/style>/gi, '')
+  .replace(/<iframe[\s\S]*?<\/iframe>/gi, '')
+  .replace(/<object[\s\S]*?<\/object>/gi, '')
+  .replace(/<embed[\s\S]*?>/gi, '')
+  .replace(/\s+on\w+="[^"]*"/gi, '')
+  .replace(/\s+on\w+='[^']*'/gi, '')
+  .replace(/href="javascript:[^"]*"/gi, 'href="#"')
+  .replace(/src="javascript:[^"]*"/gi, 'src=""');
+
 const formStateFromJob = (job = {}) => ({
   title: job.title || '',
   company: job.company || '',
@@ -232,22 +261,38 @@ const TacticalModal = ({ isOpen, title, message, type, onConfirm, onCancel }) =>
 // --- JOB CARD ---
 const stripHtml = (html) => String(html || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 
-const JobCard = ({ job, onDeleteRequest, onShowMessage }) => {
+const isPhone = (v) => v && /^\+?[\d\s\-()+]{7,}$/.test(v.trim());
+
+const applyInfo = (job) => {
+  // Website apply link — default, most common
+  if (job.apply_url) {
+    return { type: 'url', href: job.apply_url, label: 'Apply Online', display: null };
+  }
+  // Explicit contact email
+  const email = job.contact_email || (job.contact && job.contact.includes('@') ? job.contact : null);
+  if (email) {
+    return { type: 'email', href: `mailto:${email}`, label: 'Apply by Email', display: email };
+  }
+  // Phone number — show it, don't auto-dial
+  const phone = job.contact && isPhone(job.contact) ? job.contact : null;
+  if (phone) {
+    return { type: 'phone', href: `tel:${phone.replace(/\s/g, '')}`, label: 'Call to Apply', display: phone };
+  }
+  // URL in contact field
+  if (job.contact && (job.contact.startsWith('http') || job.contact.startsWith('/'))) {
+    return { type: 'url', href: job.contact, label: 'Apply Online', display: null };
+  }
+  // Fallback — link to detail page
+  return { type: 'url', href: job.detail_path || `/jobs/${job.slug}`, label: 'View Posting', display: null };
+};
+
+const JobCard = ({ job, onDeleteRequest }) => {
   const [expanded, setExpanded] = useState(false);
   const rawContent = job.content || '';
   const isHtml = rawContent.trimStart().startsWith('<');
   const isLong = rawContent.length > 400;
-
-  const handleApply = () => {
-    const contact = job.contact || '';
-    if (contact.includes('@')) {
-      onShowMessage('Contact Protocol', `Send operations request to: ${contact}`, 'info');
-    } else if (contact.startsWith('http')) {
-      window.open(contact, '_blank', 'noopener,noreferrer');
-    } else {
-      onShowMessage('Dispatch Number', `Contact dispatch at: ${contact}`, 'info');
-    }
-  };
+  const jobHref = job.detail_path || `/jobs/${job.slug}`;
+  const companyIsLink = Boolean(job.company_url);
 
   return (
     <article className="group relative bg-zinc-900 border border-zinc-800 rounded-xl p-6 mb-5 transition-all duration-300 hover:border-amber-500/50 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)]">
@@ -257,7 +302,7 @@ const JobCard = ({ job, onDeleteRequest, onShowMessage }) => {
         <div className="flex-1">
           <div className="flex items-center gap-3 mb-2">
             <h2 className="text-xl font-bold tracking-tight">
-              <a href={job.detail_path || `/jobs/${job.slug}`} className="text-zinc-100 hover:text-amber-400 transition-colors underline-offset-2 hover:underline">
+              <a href={jobHref} className="text-zinc-100 hover:text-amber-400 transition-colors underline-offset-2 hover:underline">
                 {job.title}
               </a>
             </h2>
@@ -274,10 +319,14 @@ const JobCard = ({ job, onDeleteRequest, onShowMessage }) => {
           </div>
           <div className="flex flex-wrap items-center text-zinc-400 gap-y-2 gap-x-4">
             <span className="flex items-center text-sm font-medium text-zinc-300">
-              <Building className="w-4 h-4 mr-1.5 text-zinc-500" aria-hidden="true" /> {job.company}
+              <Building className="w-4 h-4 mr-1.5 text-zinc-500" aria-hidden="true" />
+              {companyIsLink
+                ? <a href={job.company_url} target="_blank" rel="noopener noreferrer" className="hover:text-amber-400 transition-colors">{job.company}</a>
+                : job.company}
             </span>
             <span className="flex items-center text-sm">
-              <Navigation className="w-4 h-4 mr-1.5 text-zinc-500" aria-hidden="true" /> {job.city}, {job.state}
+              <Navigation className="w-4 h-4 mr-1.5 text-zinc-500" aria-hidden="true" />
+              <a href={`https://www.google.com/maps/search/${encodeURIComponent([job.city, job.state].filter(Boolean).join(', '))}`} target="_blank" rel="noopener noreferrer" className="hover:text-amber-400 transition-colors">{job.city}, {job.state}</a>
             </span>
             <span className="flex items-center text-sm">
               <Clock className="w-4 h-4 mr-1.5 text-zinc-500" aria-hidden="true" /> {timeAgo(job.created)}
@@ -299,7 +348,7 @@ const JobCard = ({ job, onDeleteRequest, onShowMessage }) => {
         <div className="mb-4 relative">
           <div
             className={`job-description text-sm overflow-hidden transition-all ${expanded ? '' : 'max-h-28'}`}
-            dangerouslySetInnerHTML={{ __html: rawContent }}
+            dangerouslySetInnerHTML={{ __html: sanitizeHtml(rawContent) }}
           />
           {!expanded && isLong && <div className="absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-zinc-900 to-transparent pointer-events-none" />}
         </div>
@@ -322,17 +371,37 @@ const JobCard = ({ job, onDeleteRequest, onShowMessage }) => {
       )}
 
       <div className="flex justify-between items-center mt-5 pt-5 border-t border-zinc-800/50">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleApply}
-            className="bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold uppercase tracking-wide text-sm py-2.5 px-6 rounded-md transition-all active:scale-95"
-          >
-            Apply Now
-          </button>
-          <a
-            href={job.detail_path || `/jobs/${job.slug}`}
-            className="text-zinc-400 hover:text-amber-400 text-xs font-bold uppercase tracking-widest transition-colors flex items-center gap-1"
-          >
+        <div className="flex items-center gap-3 flex-wrap">
+          {(() => {
+            const apply = applyInfo(job);
+            if (apply.type === 'url') {
+              return (
+                <a href={apply.href} target="_blank" rel="noopener noreferrer"
+                  className="bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold uppercase tracking-wide text-sm py-2.5 px-6 rounded-md transition-all active:scale-95">
+                  {apply.label}
+                </a>
+              );
+            }
+            if (apply.type === 'email') {
+              return (
+                <a href={apply.href}
+                  className="flex items-center gap-2 text-amber-400 hover:text-amber-300 text-sm font-mono transition-colors">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Email</span>
+                  {apply.display}
+                </a>
+              );
+            }
+            if (apply.type === 'phone') {
+              return (
+                <span className="flex items-center gap-2 text-sm font-mono text-zinc-300">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Call</span>
+                  {apply.display}
+                </span>
+              );
+            }
+          })()}
+          <a href={jobHref}
+            className="text-zinc-400 hover:text-amber-400 text-xs font-bold uppercase tracking-widest transition-colors flex items-center gap-1">
             View Posting →
           </a>
         </div>
@@ -480,6 +549,7 @@ const JobForm = ({ onSave, onDirectSave, onCancel, onShowMessage, initialJob = n
     const e = {};
     if (!formData.title.trim()) e.title = 'Job title is required';
     if (!formData.company.trim()) e.company = 'Company name is required';
+    if (!formData.company_url.trim()) e.company_url = 'Company website is required';
     if (!formData.city.trim()) e.city = 'City is required';
     if (!formData.contact.trim()) e.contact = 'Contact method is required';
     if (mode !== 'edit' && !formData.owner_email.trim()) e.owner_email = 'Email required to send your edit link';
@@ -534,7 +604,7 @@ const JobForm = ({ onSave, onDirectSave, onCancel, onShowMessage, initialJob = n
         }
         if (valid) {
           setPromoValid(true);
-          await onDirectSave({ ...formData, created: new Date().toISOString() });
+          await onDirectSave({ ...formData, promo_code: promoCode, created: new Date().toISOString() });
           return;
         }
         setPromoError('Invalid promo code.');
@@ -622,14 +692,16 @@ const JobForm = ({ onSave, onDirectSave, onCancel, onShowMessage, initialJob = n
             {errors.owner_email && <p className={errClass}>{errors.owner_email}</p>}
           </div>
           <div>
-            <label className={labelClass}>Company Website</label>
-            <input type="url" value={formData.company_url} onChange={e => setField('company_url', e.target.value)} placeholder="https://..." className={inputClass} />
+            <label className={labelClass}>Company Website *</label>
+            <input type="url" value={formData.company_url} onChange={e => setField('company_url', e.target.value)} placeholder="https://yourcompany.com" className={`${inputClass}${errors.company_url ? ' border-red-500' : ''}`} />
+            {errors.company_url && <p className={errClass}>{errors.company_url}</p>}
           </div>
         </div>
       ) : (
         <div className="mb-6">
-          <label className={labelClass}>Company Website</label>
-          <input type="url" value={formData.company_url} onChange={e => setField('company_url', e.target.value)} className={inputClass} />
+          <label className={labelClass}>Company Website *</label>
+          <input type="url" value={formData.company_url} onChange={e => setField('company_url', e.target.value)} placeholder="https://yourcompany.com" className={`${inputClass}${errors.company_url ? ' border-red-500' : ''}`} />
+          {errors.company_url && <p className={errClass}>{errors.company_url}</p>}
         </div>
       )}
 
@@ -749,40 +821,85 @@ const extractJobKey = (value) => {
   }
 };
 
-const EditPostGateway = ({ initialJobKey = '', onCancel, onShowMessage, onSaved }) => {
-  const [jobKey, setJobKey] = useState(initialJobKey);
-  const [email, setEmail] = useState('');
-  const [code, setCode] = useState('');
+// Formats raw alphanumeric into XXXX-XXX-XXX as the user types
+const formatEditCode = (raw) => {
+  const chars = raw.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10);
+  if (chars.length <= 4) return chars;
+  if (chars.length <= 7) return `${chars.slice(0, 4)}-${chars.slice(4)}`;
+  return `${chars.slice(0, 4)}-${chars.slice(4, 7)}-${chars.slice(7)}`;
+};
+
+const EditCodeInput = ({ value, onChange }) => {
+  const [revealed, setRevealed] = useState(false);
+  const handleChange = (e) => {
+    const formatted = formatEditCode(e.target.value);
+    onChange(formatted);
+  };
+  return (
+    <div className="relative">
+      <input
+        type={revealed ? 'text' : 'password'}
+        value={value}
+        onChange={handleChange}
+        placeholder="XXXX-XXX-XXX"
+        autoComplete="off"
+        spellCheck={false}
+        className="w-full p-3 bg-zinc-950 border border-zinc-700 rounded-md text-amber-400 font-mono text-xl tracking-[0.25em] text-center focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors placeholder:text-zinc-700 placeholder:tracking-widest"
+      />
+      <button
+        type="button"
+        onClick={() => setRevealed(r => !r)}
+        className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 text-xs font-bold uppercase tracking-widest transition-colors"
+      >
+        {revealed ? 'hide' : 'show'}
+      </button>
+    </div>
+  );
+};
+
+const EditPostGateway = ({ initialJobKey = '', initialCode = '', onCancel, onShowMessage, onSaved }) => {
+  const [code, setCode] = useState(() => formatEditCode(initialCode));
   const [verifiedJob, setVerifiedJob] = useState(null);
+  const [verifiedCode, setVerifiedCode] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [codeError, setCodeError] = useState('');
+  const [showEmailFlow, setShowEmailFlow] = useState(false);
+  const [emailJobKey, setEmailJobKey] = useState(initialJobKey);
+  const [email, setEmail] = useState('');
+  const [emailSent, setEmailSent] = useState(false);
 
   const inputClass = 'w-full p-2.5 bg-zinc-950 border border-zinc-800 rounded-md text-zinc-100 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors';
   const labelClass = 'block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2';
 
-  const handleRequestCode = async () => {
+  const rawCode = code.replace(/[^A-Z0-9]/g, '');
+
+  const handleVerify = async () => {
+    if (rawCode.length < 10) { setCodeError('Code must be 10 characters.'); return; }
     setIsProcessing(true);
+    setCodeError('');
     try {
-      const result = await dbService.requestEditCode(extractJobKey(jobKey), email);
-      if (result.edit_code) {
-        setCode(result.edit_code);
-        onShowMessage('Edit Code Generated', `Your edit code is ${result.edit_code}. It expires ${new Date(result.expires_at).toLocaleDateString()}.`, 'info');
-      } else {
-        onShowMessage('Check Email', 'If that email matches the listing owner, an edit code has been sent.', 'info');
-      }
-    } catch (error) {
-      onShowMessage('Code Request Failed', error.message, 'info');
+      const result = await dbService.verifyEditCode('', code);
+      setVerifiedJob(result.job);
+      setVerifiedCode(code);
+    } catch {
+      setCodeError('Invalid or expired code. Check it and try again.');
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const handleVerify = async () => {
+  const handleRequestCode = async () => {
     setIsProcessing(true);
     try {
-      const result = await dbService.verifyEditCode(extractJobKey(jobKey), code);
-      setVerifiedJob(result.job);
+      const result = await dbService.requestEditCode(extractJobKey(emailJobKey), email);
+      if (result.edit_code) {
+        setCode(formatEditCode(result.edit_code));
+        setShowEmailFlow(false);
+      } else {
+        setEmailSent(true);
+      }
     } catch (error) {
-      onShowMessage('Access Denied', error.message, 'info');
+      onShowMessage('Request Failed', error.message, 'info');
     } finally {
       setIsProcessing(false);
     }
@@ -791,7 +908,7 @@ const EditPostGateway = ({ initialJobKey = '', onCancel, onShowMessage, onSaved 
   const handleSave = async (jobData) => {
     setIsProcessing(true);
     try {
-      await dbService.updateWithEditCode(extractJobKey(jobKey), code, jobData);
+      await dbService.updateWithEditCode('', verifiedCode, jobData);
       onShowMessage('Updates Queued', 'Your changes were saved and queued for admin review.', 'info');
       await onSaved?.();
     } catch (error) {
@@ -815,111 +932,180 @@ const EditPostGateway = ({ initialJobKey = '', onCancel, onShowMessage, onSaved 
   }
 
   return (
-    <div className="max-w-xl mx-auto bg-zinc-900 p-8 rounded-xl border border-zinc-800 shadow-2xl mt-8">
-      <div className="flex items-center gap-3 mb-6">
-        <ShieldCheck className="w-8 h-8 text-amber-500" aria-hidden="true" />
-        <h2 className="text-2xl font-bold text-zinc-100 uppercase tracking-tight">Edit a Post</h2>
-      </div>
-      <div className="space-y-5">
-        <div>
-          <label className={labelClass}>Job Link or Slug</label>
-          <input type="text" value={jobKey} onChange={e => setJobKey(e.target.value)} className={inputClass} />
+    <div className="max-w-md mx-auto mt-16">
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-8 shadow-2xl">
+        <div className="flex items-center gap-3 mb-2">
+          <ShieldCheck className="w-7 h-7 text-amber-500" aria-hidden="true" />
+          <h2 className="text-xl font-black text-zinc-100 uppercase tracking-tight">Edit Your Listing</h2>
         </div>
-        <div>
-          <label className={labelClass}>Owner Email</label>
-          <input type="email" value={email} onChange={e => setEmail(e.target.value)} className={inputClass} />
-        </div>
-        <button
-          onClick={handleRequestCode}
-          disabled={isProcessing || !jobKey || !email}
-          className="w-full bg-zinc-800 hover:bg-zinc-700 disabled:bg-zinc-950 disabled:text-zinc-600 border border-zinc-700 text-zinc-100 font-bold uppercase tracking-wide py-3 rounded transition-colors"
-        >
-          Send Edit Code
-        </button>
-        <div className="border-t border-zinc-800 pt-5">
+        <p className="text-zinc-500 text-sm font-mono mb-8">Enter the edit code from your email or the confirmation screen.</p>
+
+        <div className="mb-6">
           <label className={labelClass}>Edit Code</label>
-          <input type="text" value={code} onChange={e => setCode(e.target.value)} className={`${inputClass} uppercase tracking-widest`} />
+          <EditCodeInput value={code} onChange={setCode} />
+          {codeError && <p className="text-red-400 text-xs mt-2 font-mono">{codeError}</p>}
         </div>
-        <div className="flex justify-end gap-3">
-          <button onClick={onCancel} className="px-6 py-2.5 rounded-md font-bold uppercase tracking-wide text-zinc-400 hover:text-zinc-100 transition-colors">Cancel</button>
+
+        <div className="flex gap-3">
+          <button onClick={onCancel} className="px-5 py-2.5 rounded-md font-bold uppercase tracking-wide text-zinc-400 hover:text-zinc-100 transition-colors text-sm">
+            Cancel
+          </button>
           <button
             onClick={handleVerify}
-            disabled={isProcessing || !jobKey || !code}
-            className="px-8 py-2.5 bg-amber-500 disabled:bg-zinc-800 disabled:text-zinc-500 text-zinc-950 font-bold uppercase tracking-wide rounded-md hover:bg-amber-400 transition-colors"
+            disabled={isProcessing || rawCode.length < 10}
+            className="flex-1 py-2.5 bg-amber-500 disabled:bg-zinc-800 disabled:text-zinc-500 text-zinc-950 font-bold uppercase tracking-wide rounded-md hover:bg-amber-400 transition-colors"
           >
-            Unlock Post
+            {isProcessing ? 'Verifying...' : 'Unlock Listing'}
           </button>
+        </div>
+
+        <div className="mt-8 pt-6 border-t border-zinc-800">
+          {!showEmailFlow ? (
+            <button onClick={() => setShowEmailFlow(true)} className="text-xs text-zinc-600 hover:text-zinc-400 transition-colors">
+              Lost your code? Request a new one by email →
+            </button>
+          ) : emailSent ? (
+            <div>
+              <p className="text-green-400 text-sm font-mono">Code sent! Check your email, then enter it above.</p>
+              <button onClick={() => { setEmailSent(false); setShowEmailFlow(false); }} className="text-xs text-zinc-600 hover:text-zinc-400 mt-2 transition-colors">← Back</button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-xs text-zinc-500 uppercase tracking-widest font-bold mb-3">Request by Email</p>
+              <div>
+                <label className={labelClass}>Job Slug or URL</label>
+                <input type="text" value={emailJobKey} onChange={e => setEmailJobKey(e.target.value)} placeholder="your-job-slug" className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>Owner Email</label>
+                <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@company.com" className={inputClass} />
+              </div>
+              <div className="flex gap-3">
+                <button onClick={() => setShowEmailFlow(false)} className="text-xs text-zinc-600 hover:text-zinc-400 transition-colors">← Back</button>
+                <button
+                  onClick={handleRequestCode}
+                  disabled={isProcessing || !emailJobKey || !email}
+                  className="flex-1 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-zinc-100 font-bold uppercase tracking-wide py-2 rounded text-sm transition-colors"
+                >
+                  {isProcessing ? 'Sending...' : 'Send Edit Code'}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
   );
 };
 
+// --- ADMIN INLINE JOB EDIT FORM ---
+const AdminJobEditForm = ({ job, onSave }) => {
+  const [data, setData] = useState({
+    title: job.title || '', company: job.company || '', company_url: job.company_url || '',
+    city: job.city || '', state: job.state || '', postal_code: job.postal_code || '',
+    apply_url: job.apply_url || '', contact_email: job.contact_email || '',
+    payrangemin: job.payrangemin || '', payrangemax: job.payrangemax || '',
+    paytype: job.paytype || 'Hourly', category: job.category || 'Full-time',
+    status: job.status || 'pending',
+  });
+  const f = (k) => (e) => setData(prev => ({ ...prev, [k]: e.target.value }));
+  const inputClass = 'w-full p-2 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 text-sm focus:border-amber-500 focus:outline-none';
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      <div className="col-span-2 sm:col-span-1">
+        <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1">Title</label>
+        <input className={inputClass} value={data.title} onChange={f('title')} />
+      </div>
+      <div className="col-span-2 sm:col-span-1">
+        <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1">Company</label>
+        <input className={inputClass} value={data.company} onChange={f('company')} />
+      </div>
+      <div className="col-span-2">
+        <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1">Company URL</label>
+        <input className={inputClass} value={data.company_url} onChange={f('company_url')} placeholder="https://..." />
+      </div>
+      <div>
+        <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1">City</label>
+        <input className={inputClass} value={data.city} onChange={f('city')} />
+      </div>
+      <div>
+        <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1">State</label>
+        <input className={inputClass} value={data.state} onChange={f('state')} maxLength={2} />
+      </div>
+      <div>
+        <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1">Apply URL</label>
+        <input className={inputClass} value={data.apply_url} onChange={f('apply_url')} placeholder="https://..." />
+      </div>
+      <div>
+        <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1">Contact Email</label>
+        <input className={inputClass} value={data.contact_email} onChange={f('contact_email')} />
+      </div>
+      <div>
+        <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1">Pay Min</label>
+        <input className={inputClass} type="number" value={data.payrangemin} onChange={f('payrangemin')} />
+      </div>
+      <div>
+        <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1">Pay Max</label>
+        <input className={inputClass} type="number" value={data.payrangemax} onChange={f('payrangemax')} />
+      </div>
+      <div>
+        <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1">Pay Type</label>
+        <select className={inputClass} value={data.paytype} onChange={f('paytype')}>
+          {['Hourly', 'Salary', 'Contract'].map(o => <option key={o}>{o}</option>)}
+        </select>
+      </div>
+      <div>
+        <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1">Status</label>
+        <select className={inputClass} value={data.status} onChange={f('status')}>
+          {['active', 'pending', 'rejected', 'filled', 'expired', 'archived'].map(o => <option key={o}>{o}</option>)}
+        </select>
+      </div>
+      <div className="col-span-2 flex justify-end mt-2">
+        <button onClick={() => onSave(data)} className="bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold uppercase tracking-wide py-2 px-6 rounded text-sm">Save Changes</button>
+      </div>
+    </div>
+  );
+};
+
 // --- ADMIN DASHBOARD ---
-const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh }) => {
+const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) => {
   const [activeTab, setActiveTab] = useState('aggregator');
   const [eventStats, setEventStats] = useState(null);
+  const [analyticsData, setAnalyticsData] = useState(null);
   const [isScanning, setIsScanning] = useState(false);
   const [scrapedJobs, setScrapedJobs] = useState([]);
   const [scanQuery, setScanQuery] = useState('Crime Scene Cleanup');
   const [scanLocation, setScanLocation] = useState('Nationwide');
-  const [autoPilot, setAutoPilot] = useState(false);
-  const [agentLogs, setAgentLogs] = useState(['[SYSTEM] Autonomous Agent initialized. Standing by...']);
+  const [scanHistory, setScanHistory] = useState(null);
+  const [healthData, setHealthData] = useState(null);
+  const [dbSearch, setDbSearch] = useState('');
+  const [dbStatusFilter, setDbStatusFilter] = useState('all');
+  const [editingJob, setEditingJob] = useState(null);
 
   useEffect(() => {
     let isMounted = true;
-    const loadCandidates = async () => {
-      try {
-        const candidates = await dbService.listCandidates();
-        if (isMounted) setScrapedJobs(candidates);
-      } catch (error) {
-        console.error('Candidate sync failed:', error);
-      }
-    };
-    loadCandidates();
+    Promise.all([
+      dbService.listCandidates(),
+      dbService.getScanHistory(),
+      fetch('/api/health').then(r => r.json()),
+    ]).then(([candidates, history, health]) => {
+      if (!isMounted) return;
+      setScrapedJobs(candidates);
+      setScanHistory(history.runs || []);
+      setHealthData(health);
+    }).catch(err => console.error('Admin init failed:', err));
     return () => { isMounted = false; };
   }, []);
 
-  useEffect(() => {
-    if (!autoPilot) return;
-    let isMounted = true;
-    const runAgent = async () => {
-      setIsScanning(true);
-      setAgentLogs(prev => [...prev, '[AGENT] Running Cloudflare import pipeline now...']);
-      try {
-        const result = await dbService.scanJobs(scanQuery, scanLocation);
-        if (!isMounted) return;
-        setScrapedJobs(result.candidates || []);
-        setAgentLogs(prev => [
-          ...prev,
-          `[AGENT] Discovered ${result.discovered || 0} URLs; queued ${result.candidates?.length || 0} candidates.`,
-          '[SYSTEM] Daily schedule lives in the Cloudflare Cron Worker.',
-        ]);
-      } catch (error) {
-        if (!isMounted) return;
-        setAgentLogs(prev => [...prev, `[ERROR] ${error.message}`]);
-        onShowMessage('Agent Failed', error.message, 'info');
-      } finally {
-        if (isMounted) {
-          setIsScanning(false);
-          setAutoPilot(false);
-        }
-      }
-    };
-    runAgent();
-    return () => { isMounted = false; };
-  }, [autoPilot, onShowMessage, scanLocation, scanQuery]);
-
   const runSourceScan = async () => {
     setIsScanning(true);
-    setAgentLogs(prev => [...prev, `[SCAN] ${scanQuery} / ${scanLocation}`]);
     try {
       const result = await dbService.scanJobs(scanQuery, scanLocation);
       setScrapedJobs(result.candidates || []);
-      setAgentLogs(prev => [...prev, `[SCAN] ${result.discovered || 0} sources checked. ${result.candidates?.length || 0} candidates queued.`]);
-      onShowMessage('Scan Complete', `${result.candidates?.length || 0} candidate listings are ready for review.`, 'info');
+      const history = await dbService.getScanHistory();
+      setScanHistory(history.runs || []);
+      onShowMessage('Scan Complete', `${result.candidates?.length || 0} candidate listings queued for review.`, 'info');
     } catch (error) {
-      setAgentLogs(prev => [...prev, `[ERROR] ${error.message}`]);
       onShowMessage('Scan Failed', error.message, 'info');
     } finally {
       setIsScanning(false);
@@ -995,7 +1181,11 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh }) => {
         <button
           role="tab"
           aria-selected={activeTab === 'analytics'}
-          onClick={() => { setActiveTab('analytics'); if (!eventStats) dbService.getEvents().then(d => setEventStats(d)).catch(() => {}); }}
+          onClick={() => {
+            setActiveTab('analytics');
+            if (!eventStats) dbService.getEvents().then(d => setEventStats(d)).catch(() => {});
+            if (!analyticsData) dbService.getAnalytics().then(d => setAnalyticsData(d)).catch(() => {});
+          }}
           className={`flex-1 py-4 text-sm font-bold uppercase tracking-widest transition-colors ${activeTab === 'analytics' ? 'text-amber-500 border-b-2 border-amber-500 bg-zinc-900' : 'text-zinc-500 hover:text-zinc-300'}`}
         >
           <Activity className="w-4 h-4 inline mr-2 mb-0.5" aria-hidden="true" /> Analytics
@@ -1004,97 +1194,72 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh }) => {
 
       <div className="p-8 min-h-[500px]">
         {activeTab === 'aggregator' ? (
-          <div className="space-y-8">
-            <div className="bg-zinc-950 border border-amber-500/30 p-6 rounded-lg relative overflow-hidden shadow-[0_0_15px_rgba(245,158,11,0.05)]">
-              <div className="absolute top-0 right-0 p-6">
-                <button
-                  onClick={() => {
-                    if (!autoPilot) setAgentLogs(['[SYSTEM] Manual override engaged. Booting agent...']);
-                    setAutoPilot(!autoPilot);
-                  }}
-                  aria-label={autoPilot ? 'Disable autonomous agent' : 'Enable autonomous agent'}
-                  aria-pressed={autoPilot}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 ${autoPilot ? 'bg-amber-500' : 'bg-zinc-700'}`}
-                >
-                  <span className={`inline-block h-4 w-4 transform rounded-full bg-zinc-100 transition-transform ${autoPilot ? 'translate-x-6' : 'translate-x-1'}`} aria-hidden="true" />
-                </button>
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-5">
+                <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+                  <Cpu className="w-3.5 h-3.5 text-amber-500" /> Scheduled Scan
+                </h3>
+                <p className="text-sm text-zinc-100 font-mono mb-1">Daily at 9:00 AM UTC</p>
+                <p className="text-xs text-zinc-500">
+                  Last run: {healthData?.last_scan_at
+                    ? new Date(healthData.last_scan_at).toLocaleString()
+                    : 'Never'}
+                </p>
               </div>
-              <h3 className="text-sm font-bold text-amber-500 uppercase tracking-widest mb-2 flex items-center">
-                <Cpu className="w-4 h-4 mr-2" aria-hidden="true" /> Autonomous AI Agent
-              </h3>
-              <p className="text-xs text-zinc-400 mb-4 max-w-xl leading-relaxed font-mono">
-                The deployed Cloudflare Cron Worker wakes daily, checks configured job APIs/search sources, extracts details, and queues real listings for approval.
-              </p>
-              <div
-                className="bg-zinc-900 border border-zinc-800 rounded p-4 font-mono text-xs text-green-400 h-40 overflow-y-auto flex flex-col justify-end shadow-inner"
-                aria-live="polite"
-                aria-label="Agent log output"
-              >
-                {agentLogs.map((log, i) => <div key={i} className="mb-1.5 opacity-90">{log}</div>)}
-                {autoPilot && <div className="animate-pulse mt-1 text-amber-500" aria-hidden="true">_</div>}
+              <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-5">
+                <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-3">Manual Scan</h3>
+                <div className="flex gap-2 mb-3">
+                  <input type="text" value={scanQuery} onChange={e => setScanQuery(e.target.value)} placeholder="Keywords" className="flex-1 min-w-0 p-2 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 text-xs font-mono focus:border-amber-500 focus:outline-none" />
+                  <input type="text" value={scanLocation} onChange={e => setScanLocation(e.target.value)} placeholder="Location" className="w-28 p-2 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 text-xs font-mono focus:border-amber-500 focus:outline-none" />
+                </div>
+                <button onClick={runSourceScan} disabled={isScanning} className="w-full bg-amber-500 hover:bg-amber-400 disabled:bg-zinc-800 text-zinc-950 disabled:text-zinc-500 font-bold uppercase tracking-wide py-2 px-4 rounded text-xs flex items-center justify-center gap-2">
+                  {isScanning ? <><Activity className="w-3.5 h-3.5 animate-spin" /> Scanning...</> : <><Radar className="w-3.5 h-3.5" /> Run Scan Now</>}
+                </button>
               </div>
             </div>
 
-            <div className="bg-zinc-950 border border-zinc-800 p-6 rounded-lg">
-              <h3 className="text-sm font-bold text-zinc-100 uppercase tracking-widest mb-4 flex items-center">
-                <Terminal className="w-4 h-4 mr-2 text-zinc-500" aria-hidden="true" /> Manual Web Scraper
-              </h3>
-              <div className="flex gap-4 mb-4">
-                <div className="flex-1">
-                  <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-2">Target Keywords</label>
-                  <input type="text" value={scanQuery} onChange={e => setScanQuery(e.target.value)} className="w-full p-2.5 bg-zinc-900 border border-zinc-800 rounded-md text-zinc-100 focus:border-amber-500 font-mono text-sm" />
-                </div>
-                <div className="flex-1">
-                  <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-2">Target Location</label>
-                  <input type="text" value={scanLocation} onChange={e => setScanLocation(e.target.value)} className="w-full p-2.5 bg-zinc-900 border border-zinc-800 rounded-md text-zinc-100 focus:border-amber-500 font-mono text-sm" />
+            {scanHistory && scanHistory.length > 0 && (
+              <div>
+                <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-3">Recent Scan History</h3>
+                <div className="space-y-2">
+                  {scanHistory.map(run => (
+                    <div key={run.id} className="bg-zinc-950 border border-zinc-800 rounded px-4 py-3 flex items-center justify-between">
+                      <div>
+                        <p className="text-xs text-zinc-300 font-mono">{run.started_at ? new Date(run.started_at).toLocaleString() : '—'}</p>
+                        <p className="text-[10px] text-zinc-600 mt-0.5">{run.query}</p>
+                      </div>
+                      <div className="flex items-center gap-4 text-[10px] font-mono">
+                        <span className="text-zinc-400">{run.discovered_count ?? 0} found</span>
+                        <span className="text-amber-400">{run.candidate_count ?? 0} queued</span>
+                        <span className="text-green-400">{run.published_count ?? 0} published</span>
+                        <span className={`font-bold uppercase ${run.status === 'complete' ? 'text-green-500' : run.status === 'running' ? 'text-amber-500' : 'text-red-400'}`}>{run.status}</span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
-              <button
-                onClick={runSourceScan}
-                disabled={isScanning}
-                className="bg-amber-500 hover:bg-amber-400 disabled:bg-zinc-800 text-zinc-950 disabled:text-zinc-500 font-bold uppercase tracking-wide py-3 px-6 rounded-md flex items-center"
-              >
-                {isScanning
-                  ? <><Activity className="w-5 h-5 mr-2 animate-spin" aria-hidden="true" /> Scanning Web...</>
-                  : <><Radar className="w-5 h-5 mr-2" aria-hidden="true" /> Initialize Scan</>}
-              </button>
-            </div>
+            )}
 
             {scrapedJobs.length > 0 && (
               <div>
-                <h3 className="text-sm font-bold text-zinc-500 uppercase tracking-widest mb-4 border-b border-zinc-800 pb-2">
-                  Pending Import Operations ({scrapedJobs.length})
+                <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-3 border-t border-zinc-800 pt-4">
+                  Pending Review ({scrapedJobs.length})
                 </h3>
-                <div className="space-y-4">
+                <div className="space-y-3">
                   {scrapedJobs.map(job => (
-                    <div key={job.id} className="bg-zinc-950 border border-zinc-800 p-5 rounded-lg flex justify-between items-center group hover:border-amber-500/30 transition-colors">
+                    <div key={job.id} className="bg-zinc-950 border border-zinc-800 p-4 rounded-lg flex justify-between items-center group hover:border-amber-500/30 transition-colors">
                       <div>
-                        <h4 className="text-lg font-bold text-zinc-100">{job.title}</h4>
-                        <p className="text-sm text-zinc-400">{job.company || 'Company unknown'} • {[job.city, job.state].filter(Boolean).join(', ') || 'Location unknown'}</p>
-                        <p className="text-xs text-zinc-600 font-mono mt-1">
+                        <h4 className="text-sm font-bold text-zinc-100">{job.title}</h4>
+                        <p className="text-xs text-zinc-400">{job.company || 'Unknown'} • {[job.city, job.state].filter(Boolean).join(', ') || 'No location'}</p>
+                        <p className="text-[10px] text-zinc-600 font-mono mt-1">
                           {Math.round(Number(job.confidence || 0) * 100)}% confidence
-                          {job.source_url && (
-                            <>
-                              {' '}• <a href={job.source_url} target="_blank" rel="noreferrer" className="text-amber-500 hover:text-amber-400">source</a>
-                            </>
-                          )}
+                          {job.source_url && <> • <a href={job.source_url} target="_blank" rel="noreferrer" className="text-amber-500 hover:text-amber-400">source</a></>}
                         </p>
                       </div>
                       <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button
-                          onClick={() => rejectJob(job.id)}
-                          aria-label={`Reject ${job.title}`}
-                          className="p-2 bg-zinc-900 hover:bg-red-500/20 text-zinc-500 hover:text-red-500 rounded border border-zinc-800"
-                        >
-                          <X className="w-5 h-5" aria-hidden="true" />
-                        </button>
-                        <button
-                          onClick={() => approveJob(job)}
-                          aria-label={`Approve and import ${job.title}`}
-                          className="p-2 bg-zinc-900 hover:bg-green-500/20 text-zinc-500 hover:text-green-500 rounded border border-zinc-800"
-                        >
-                          <Download className="w-5 h-5" aria-hidden="true" />
-                        </button>
+                        <button onClick={() => rejectJob(job.id)} aria-label={`Reject ${job.title}`} className="p-2 bg-zinc-900 hover:bg-red-500/20 text-zinc-500 hover:text-red-500 rounded border border-zinc-800"><X className="w-4 h-4" /></button>
+                        <button onClick={() => approveJob(job)} aria-label={`Approve ${job.title}`} className="p-2 bg-zinc-900 hover:bg-green-500/20 text-zinc-500 hover:text-green-500 rounded border border-zinc-800"><Download className="w-4 h-4" /></button>
                       </div>
                     </div>
                   ))}
@@ -1103,103 +1268,322 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh }) => {
             )}
           </div>
         ) : activeTab === 'analytics' ? (
-          <div role="tabpanel">
-            <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-6">Last 30 Days — Funnel</h3>
-            {!eventStats ? (
-              <p className="text-zinc-500 font-mono text-sm">Loading...</p>
-            ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
-                {[
-                  { key: 'submit_click', label: 'Submit Clicks', color: 'text-zinc-100' },
-                  { key: 'payment_initiated', label: 'Stripe Redirects', color: 'text-amber-400' },
-                  { key: 'payment_completed', label: 'Payments Returned', color: 'text-blue-400' },
-                  { key: 'job_posted', label: 'Jobs Posted', color: 'text-green-400' },
-                ].map(({ key, label, color }) => {
-                  const row = eventStats.events?.find(e => e.event === key);
-                  return (
-                    <div key={key} className="bg-zinc-950 border border-zinc-800 rounded-lg p-5">
-                      <p className={`text-3xl font-black font-mono ${color}`}>{row?.count ?? 0}</p>
-                      <p className="text-xs text-zinc-500 uppercase tracking-widest mt-1">{label}</p>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-5">
-              <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-3">Live DB by Status</h4>
-              <div className="flex gap-6">
-                {['active', 'pending', 'rejected'].map(s => (
-                  <div key={s}>
-                    <p className={`text-2xl font-black font-mono ${s === 'active' ? 'text-green-400' : s === 'pending' ? 'text-amber-400' : 'text-zinc-500'}`}>
-                      {jobs.filter(j => j.status === s).length}
-                    </p>
-                    <p className="text-xs text-zinc-500 uppercase tracking-widest">{s}</p>
+          <div role="tabpanel" className="space-y-6">
+            <div>
+              <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-4">Payment Funnel — Last 30 Days</h3>
+              {!eventStats ? (
+                <p className="text-zinc-500 font-mono text-sm">Loading...</p>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  {[
+                    { key: 'submit_click', label: 'Submit Clicks', color: 'text-zinc-100' },
+                    { key: 'payment_initiated', label: 'Stripe Redirects', color: 'text-amber-400' },
+                    { key: 'payment_completed', label: 'Payments Returned', color: 'text-blue-400' },
+                    { key: 'job_posted', label: 'Jobs Posted', color: 'text-green-400' },
+                  ].map(({ key, label, color }) => {
+                    const row = eventStats.events?.find(e => e.event === key);
+                    return (
+                      <div key={key} className="bg-zinc-950 border border-zinc-800 rounded-lg p-5">
+                        <p className={`text-3xl font-black font-mono ${color}`}>{row?.count ?? 0}</p>
+                        <p className="text-xs text-zinc-500 uppercase tracking-widest mt-1">{label}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-4">Job Engagement — Last 30 Days</h3>
+              {!analyticsData ? (
+                <p className="text-zinc-500 font-mono text-sm">Loading...</p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-5">
+                    <h4 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-3">Top by Views</h4>
+                    {analyticsData.top_views?.length === 0
+                      ? <p className="text-zinc-600 text-xs font-mono">No data yet</p>
+                      : analyticsData.top_views?.map(row => (
+                        <div key={row.slug} className="flex justify-between items-center py-1.5 border-b border-zinc-800/50 last:border-0">
+                          <p className="text-xs text-zinc-300 truncate max-w-[200px]">{row.title || row.slug}</p>
+                          <span className="text-xs font-mono text-amber-400 ml-2 shrink-0">{row.views}</span>
+                        </div>
+                      ))}
                   </div>
-                ))}
+                  <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-5">
+                    <h4 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-3">Top by Apply Clicks</h4>
+                    {analyticsData.top_clicks?.length === 0
+                      ? <p className="text-zinc-600 text-xs font-mono">No data yet</p>
+                      : analyticsData.top_clicks?.map(row => (
+                        <div key={row.slug} className="flex justify-between items-center py-1.5 border-b border-zinc-800/50 last:border-0">
+                          <p className="text-xs text-zinc-300 truncate max-w-[200px]">{row.title || row.slug}</p>
+                          <span className="text-xs font-mono text-green-400 ml-2 shrink-0">{row.clicks}</span>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-5">
+                <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-3">Scan Effectiveness (30d)</h4>
+                {analyticsData?.scan ? (
+                  <div className="grid grid-cols-2 gap-3">
+                    {[
+                      { label: 'Runs', val: analyticsData.scan.runs ?? 0, color: 'text-zinc-300' },
+                      { label: 'Discovered', val: analyticsData.scan.discovered ?? 0, color: 'text-zinc-300' },
+                      { label: 'Candidates', val: analyticsData.scan.candidates ?? 0, color: 'text-amber-400' },
+                      { label: 'Published', val: analyticsData.scan.published ?? 0, color: 'text-green-400' },
+                    ].map(({ label, val, color }) => (
+                      <div key={label}>
+                        <p className={`text-2xl font-black font-mono ${color}`}>{val}</p>
+                        <p className="text-[10px] text-zinc-500 uppercase tracking-widest">{label}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : <p className="text-zinc-600 text-xs font-mono">No scan data</p>}
+              </div>
+              <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-5">
+                <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-3">Live DB by Status</h4>
+                <div className="grid grid-cols-3 gap-3">
+                  {[
+                    { s: 'active', color: 'text-green-400' },
+                    { s: 'pending', color: 'text-amber-400' },
+                    { s: 'rejected', color: 'text-zinc-500' },
+                    { s: 'archived', color: 'text-zinc-600' },
+                    { s: 'expired', color: 'text-zinc-600' },
+                    { s: 'filled', color: 'text-blue-400' },
+                  ].map(({ s, color }) => (
+                    <div key={s}>
+                      <p className={`text-2xl font-black font-mono ${color}`}>{jobs.filter(j => j.status === s).length}</p>
+                      <p className="text-[10px] text-zinc-500 uppercase tracking-widest">{s}</p>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
         ) : (
-          <div className="space-y-2" role="tabpanel">
-            {jobs.length === 0 && (
-              <p className="text-zinc-500 text-sm font-mono text-center py-12">No records in database.</p>
-            )}
-            {jobs.map(job => (
-              <div key={job.id} className="bg-zinc-950 border border-zinc-800 p-4 rounded-lg flex justify-between items-center">
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h4 className="text-sm font-bold text-zinc-100">{job.title}</h4>
-                    <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-sm ${job.status === 'active' ? 'bg-green-500/15 text-green-400' : job.status === 'pending' ? 'bg-amber-500/15 text-amber-400' : 'bg-zinc-800 text-zinc-400'}`}>
-                      {job.status}
-                    </span>
-                  </div>
-                  <p className="text-xs text-zinc-500 font-mono">{job.company} • {[job.city, job.state].filter(Boolean).join(', ') || 'No location'}</p>
-                </div>
-                <div className="flex items-center gap-3">
-                  {job.status !== 'active' && (
-                    <button
-                      onClick={() => updateLiveJobStatus(job, 'active')}
-                      className="text-[10px] font-bold uppercase tracking-widest text-green-400 hover:text-green-300"
-                    >
-                      Publish
-                    </button>
-                  )}
-                  {job.status === 'active' && (
-                    <button
-                      onClick={() => updateLiveJobStatus(job, 'expired')}
-                      className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 hover:text-zinc-300"
-                    >
-                      Expire
-                    </button>
-                  )}
-                  {job.status === 'pending' && (
-                    <button
-                      onClick={() => updateLiveJobStatus(job, 'rejected')}
-                      className="text-[10px] font-bold uppercase tracking-widest text-red-400 hover:text-red-300"
-                    >
-                      Reject
-                    </button>
-                  )}
-                  <button
-                    onClick={async () => {
-                      try {
-                        await dbService.deleteJob(job.id);
-                        await onRefresh?.();
-                      } catch (error) {
-                        onShowMessage('Delete Failed', error.message, 'info');
-                      }
-                    }}
-                    aria-label={`Delete ${job.title}`}
-                    className="text-zinc-600 hover:text-red-500 transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" aria-hidden="true" />
-                  </button>
-                </div>
+          <div className="space-y-4" role="tabpanel">
+            <div className="flex flex-wrap gap-3 items-center">
+              <div className="relative flex-1 min-w-48">
+                <Search className="w-4 h-4 absolute left-3 top-2.5 text-zinc-500" />
+                <input
+                  type="search"
+                  value={dbSearch}
+                  onChange={e => setDbSearch(e.target.value)}
+                  placeholder="Search title, company..."
+                  className="w-full pl-9 pr-3 py-2 bg-zinc-950 border border-zinc-800 rounded text-sm text-zinc-200 placeholder-zinc-600 focus:border-amber-500 focus:outline-none"
+                />
               </div>
-            ))}
+              <select
+                value={dbStatusFilter}
+                onChange={e => setDbStatusFilter(e.target.value)}
+                className="p-2 bg-zinc-950 border border-zinc-800 rounded text-sm text-zinc-200 focus:border-amber-500 focus:outline-none appearance-none"
+              >
+                {['all', 'active', 'pending', 'rejected', 'archived', 'expired', 'filled'].map(s => (
+                  <option key={s} value={s}>{s === 'all' ? 'All Statuses' : s}</option>
+                ))}
+              </select>
+              {onAddJob && (
+                <button onClick={onAddJob} className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold uppercase tracking-wide py-2 px-4 rounded text-xs">
+                  <PlusCircle className="w-4 h-4" /> New Job
+                </button>
+              )}
+            </div>
+
+            {editingJob && (
+              <div className="bg-zinc-950 border border-amber-500/40 rounded-xl p-6">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-sm font-bold text-amber-500 uppercase tracking-widest">Edit Job: {editingJob.title}</h3>
+                  <button onClick={() => setEditingJob(null)} className="text-zinc-500 hover:text-zinc-300 text-xs uppercase tracking-widest">Cancel</button>
+                </div>
+                <AdminJobEditForm
+                  job={editingJob}
+                  onSave={async (data) => {
+                    try {
+                      await dbService.updateJobFull(editingJob.id, data);
+                      setEditingJob(null);
+                      await onRefresh?.();
+                      onShowMessage('Updated', `${data.title || editingJob.title} saved.`, 'info');
+                    } catch (err) {
+                      onShowMessage('Update Failed', err.message, 'info');
+                    }
+                  }}
+                />
+              </div>
+            )}
+
+            {(() => {
+              const filtered = jobs.filter(job => {
+                if (dbStatusFilter !== 'all' && job.status !== dbStatusFilter) return false;
+                if (dbSearch) {
+                  const q = dbSearch.toLowerCase();
+                  return (job.title || '').toLowerCase().includes(q) || (job.company || '').toLowerCase().includes(q);
+                }
+                return true;
+              });
+              if (filtered.length === 0) return <p className="text-zinc-500 text-sm font-mono text-center py-12">No records match.</p>;
+              return (
+                <div className="space-y-2">
+                  {filtered.map(job => {
+                    const statusColor = { active: 'bg-green-500/15 text-green-400', pending: 'bg-amber-500/15 text-amber-400', filled: 'bg-blue-500/15 text-blue-400' }[job.status] || 'bg-zinc-800 text-zinc-400';
+                    return (
+                      <div key={job.id} className="bg-zinc-950 border border-zinc-800 p-4 rounded-lg flex justify-between items-center">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h4 className="text-sm font-bold text-zinc-100 truncate">{job.title}</h4>
+                            <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-sm shrink-0 ${statusColor}`}>{job.status}</span>
+                          </div>
+                          <p className="text-xs text-zinc-500 font-mono">{job.company} • {[job.city, job.state].filter(Boolean).join(', ') || 'No location'}</p>
+                        </div>
+                        <div className="flex items-center gap-2 ml-3 shrink-0">
+                          <button onClick={() => setEditingJob(job)} className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 hover:text-amber-400 transition-colors">Edit</button>
+                          {job.status !== 'active' && (
+                            <button onClick={() => updateLiveJobStatus(job, 'active')} className="text-[10px] font-bold uppercase tracking-widest text-green-400 hover:text-green-300 transition-colors">Publish</button>
+                          )}
+                          {job.status === 'active' && (
+                            <button onClick={() => updateLiveJobStatus(job, 'filled')} className="text-[10px] font-bold uppercase tracking-widest text-blue-400 hover:text-blue-300 transition-colors">Fill</button>
+                          )}
+                          {job.status === 'active' && (
+                            <button onClick={() => updateLiveJobStatus(job, 'expired')} className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 hover:text-zinc-300 transition-colors">Expire</button>
+                          )}
+                          {job.status === 'pending' && (
+                            <button onClick={() => updateLiveJobStatus(job, 'rejected')} className="text-[10px] font-bold uppercase tracking-widest text-red-400 hover:text-red-300 transition-colors">Reject</button>
+                          )}
+                          <button
+                            onClick={async () => {
+                              try { await dbService.deleteJob(job.id); await onRefresh?.(); }
+                              catch (error) { onShowMessage('Delete Failed', error.message, 'info'); }
+                            }}
+                            aria-label={`Delete ${job.title}`}
+                            className="text-zinc-600 hover:text-red-500 transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </div>
         )}
       </div>
+    </div>
+  );
+};
+
+// --- JOB DETAIL PAGE (SPA route for /jobs/:slug) ---
+const JobDetailPage = ({ slug, onBack }) => {
+  const [job, setJob] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
+
+  useEffect(() => {
+    if (!slug) { setNotFound(true); setLoading(false); return; }
+    apiRequest(`/api/jobs/${encodeURIComponent(slug)}`)
+      .then(data => {
+        const j = data.job || null;
+        setJob(j);
+        if (!j) { setNotFound(true); return; }
+        dbService.logEvent('job_view', { slug: j.slug, title: j.title });
+      })
+      .catch(() => setNotFound(true))
+      .finally(() => setLoading(false));
+  }, [slug]);
+
+  if (loading) return (
+    <div className="flex justify-center py-32">
+      <Activity className="w-8 h-8 text-amber-500 animate-spin" aria-label="Loading" />
+    </div>
+  );
+
+  if (notFound || !job) return (
+    <div className="max-w-2xl mx-auto mt-24 text-center">
+      <h2 className="text-2xl font-black uppercase tracking-tight text-zinc-100 mb-3">Listing Not Found</h2>
+      <p className="text-zinc-400 mb-6 font-mono text-sm">This posting may have been filled or removed.</p>
+      <button onClick={onBack} className="text-amber-500 font-bold uppercase tracking-widest text-sm hover:text-amber-400">← Back to Jobs</button>
+    </div>
+  );
+
+  const apply = applyInfo(job);
+  const payText = formatPay(job.payrangemin, job.payrangemax, job.paytype);
+  const rawContent = job.content || job.description || '';
+  const isHtml = rawContent.trimStart().startsWith('<');
+
+  const fireApplyClick = () => dbService.logEvent('apply_click', { slug: job.slug, title: job.title, apply_type: apply.type });
+
+  const ApplyButton = ({ className }) => {
+    if (apply.type === 'url') {
+      return (
+        <a href={apply.href} target="_blank" rel="noopener noreferrer" className={className} onClick={fireApplyClick}>
+          {apply.label}
+        </a>
+      );
+    }
+    if (apply.type === 'email') {
+      return (
+        <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-5 mb-4">
+          <p className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-2">Apply by Email</p>
+          <a href={apply.href} onClick={fireApplyClick} className="text-amber-400 hover:text-amber-300 font-mono text-sm transition-colors">{apply.display}</a>
+        </div>
+      );
+    }
+    if (apply.type === 'phone') {
+      return (
+        <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-5 mb-4">
+          <p className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-2">Contact to Apply</p>
+          <a href={apply.href} onClick={fireApplyClick} className="text-zinc-200 hover:text-amber-400 font-mono text-sm transition-colors">{apply.display}</a>
+        </div>
+      );
+    }
+    return null;
+  };
+
+  return (
+    <div className="max-w-3xl mx-auto mt-8">
+      <button onClick={onBack} className="text-zinc-500 hover:text-amber-400 text-xs font-bold uppercase tracking-widest mb-8 flex items-center gap-1 transition-colors">
+        ← Back to all jobs
+      </button>
+      <p className="text-amber-500 text-xs font-bold tracking-widest uppercase mb-2">{job.category}</p>
+      <h1 className="text-3xl md:text-4xl font-black tracking-tight text-zinc-100 mb-4 leading-tight">{job.title}</h1>
+      <div className="flex flex-wrap gap-x-5 gap-y-1 text-zinc-400 text-sm mb-6">
+        <span className="flex items-center gap-1.5">
+          <Building className="w-4 h-4 text-zinc-500" />
+          {job.company_url
+            ? <a href={job.company_url} target="_blank" rel="noopener noreferrer" className="text-zinc-300 hover:text-amber-400 transition-colors">{job.company}</a>
+            : <span className="text-zinc-300">{job.company}</span>}
+        </span>
+        {(job.city || job.state) && (
+          <span className="flex items-center gap-1.5">
+            <Navigation className="w-4 h-4 text-zinc-500" />
+            <a href={`https://www.google.com/maps/search/${encodeURIComponent([job.city, job.state].filter(Boolean).join(', '))}`} target="_blank" rel="noopener noreferrer" className="hover:text-amber-400 transition-colors">
+              {[job.city, job.state].filter(Boolean).join(', ')}
+            </a>
+          </span>
+        )}
+        <span className="flex items-center gap-1.5">
+          <Banknote className="w-4 h-4 text-zinc-500" />
+          <span className="text-green-400">{payText}</span>
+        </span>
+        <span className="flex items-center gap-1.5">
+          <Clock className="w-4 h-4 text-zinc-500" />
+          {timeAgo(job.created)}
+        </span>
+      </div>
+
+      <ApplyButton className="inline-block bg-amber-500 hover:bg-amber-400 text-zinc-950 font-black uppercase tracking-wide px-8 py-3 rounded-md transition mb-8" />
+
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 mb-6">
+        {isHtml
+          ? <div className="job-description" dangerouslySetInnerHTML={{ __html: sanitizeHtml(rawContent) }} />
+          : <div className="text-zinc-400 whitespace-pre-wrap text-sm leading-relaxed">{rawContent}</div>}
+      </div>
+
+      <ApplyButton className="inline-block bg-amber-500 hover:bg-amber-400 text-zinc-950 font-black uppercase tracking-wide px-8 py-3 rounded-md transition mb-4" />
     </div>
   );
 };
@@ -1209,15 +1593,21 @@ export default function App() {
   const urlParams = useMemo(() => new URLSearchParams(window.location.search), []);
   const [jobs, setJobs] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [jobDetailSlug] = useState(() => {
+    const m = window.location.pathname.match(/^\/jobs\/([^/]+)$/);
+    return m ? decodeURIComponent(m[1]) : '';
+  });
   const [currentView, setCurrentView] = useState(() => {
     if (urlParams.get('edit')) return 'edit';
     if (window.location.pathname === '/post-success') return 'submitting';
+    if (/^\/jobs\/[^/]+$/.test(window.location.pathname)) return 'job-detail';
     return 'home';
   });
   const [showFilters, setShowFilters] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminToken, setAdminToken] = useState(() => getAdminToken());
   const [editTarget, setEditTarget] = useState(() => urlParams.get('edit') || '');
+  const [editPrefilledCode, setEditPrefilledCode] = useState('');
   const [postedJob, setPostedJob] = useState(null);
   const [modal, setModal] = useState({ isOpen: false, title: '', message: '', type: 'info', onConfirm: null });
   const [search, setSearch] = useState(() => urlParams.get('search') || '');
@@ -1295,13 +1685,25 @@ export default function App() {
     setFilters({ state: 'All', city: 'All', paytype: 'All', category: 'All', company: 'All', sort: 'Newest' });
   };
 
-  const authorizeAdmin = () => {
-    const token = window.prompt('Enter your admin token', adminToken || '');
-    if (!token) return;
-    localStorage.setItem(ADMIN_TOKEN_KEY, token.trim());
-    setAdminToken(token.trim());
-    setIsAdmin(true);
-    setCurrentView('admin');
+  const [adminLoginError, setAdminLoginError] = useState('');
+  const [adminLoginLoading, setAdminLoginLoading] = useState(false);
+
+  const authorizeAdmin = async (token) => {
+    if (!token?.trim()) return;
+    setAdminLoginLoading(true);
+    setAdminLoginError('');
+    try {
+      const ok = await dbService.verifyAdminToken(token.trim());
+      if (!ok) { setAdminLoginError('Invalid token.'); return; }
+      localStorage.setItem(ADMIN_TOKEN_KEY, token.trim());
+      setAdminToken(token.trim());
+      setIsAdmin(true);
+      setCurrentView('admin');
+    } catch (err) {
+      setAdminLoginError(err.message || 'Too many attempts. Try again later.');
+    } finally {
+      setAdminLoginLoading(false);
+    }
   };
 
   const submitJob = async (newJob, { publish } = {}) => {
@@ -1330,7 +1732,7 @@ export default function App() {
   };
 
   const handleAddJobDirect = async (newJob) => {
-    await submitJob(newJob, { publish: true });
+    await submitJob(newJob);
   };
 
   const requestDeleteJob = (id) => {
@@ -1386,21 +1788,32 @@ export default function App() {
 
       <main className="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 lg:py-12">
         {currentView === 'login' ? (
-          <div className="max-w-md mx-auto mt-20 bg-zinc-900 p-8 border border-zinc-800 rounded-xl shadow-2xl text-center">
-            <ShieldAlert className="w-12 h-12 text-zinc-500 mx-auto mb-4" aria-hidden="true" />
-            <h2 className="text-xl font-bold uppercase tracking-widest text-zinc-100 mb-6">Restricted Area</h2>
-            <button
-              onClick={authorizeAdmin}
-              className="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-100 font-bold uppercase tracking-wide py-3 rounded border border-zinc-700 transition-colors"
-            >
-              Authorize Access
-            </button>
-            <button onClick={() => setCurrentView('home')} className="mt-4 text-xs text-zinc-500 hover:text-zinc-300 uppercase tracking-widest">
-              Return to Public Grid
+          <div className="max-w-sm mx-auto mt-20 bg-zinc-900 p-8 border border-zinc-800 rounded-xl shadow-2xl">
+            <div className="flex items-center gap-3 mb-6">
+              <ShieldAlert className="w-7 h-7 text-zinc-500" aria-hidden="true" />
+              <h2 className="text-lg font-black uppercase tracking-widest text-zinc-100">Admin Access</h2>
+            </div>
+            <form onSubmit={e => { e.preventDefault(); authorizeAdmin(e.target.token.value); }}>
+              <input
+                name="token"
+                type="password"
+                defaultValue={adminToken || ''}
+                placeholder="Admin token"
+                autoFocus
+                disabled={adminLoginLoading}
+                className="w-full p-2.5 mb-4 bg-zinc-950 border border-zinc-700 rounded-md text-zinc-100 font-mono focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors disabled:opacity-50"
+              />
+              {adminLoginError && <p className="text-red-400 text-xs font-mono mb-3">{adminLoginError}</p>}
+              <button type="submit" disabled={adminLoginLoading} className="w-full bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-zinc-100 font-bold uppercase tracking-wide py-2.5 rounded border border-zinc-700 transition-colors">
+                {adminLoginLoading ? 'Verifying...' : 'Authorize'}
+              </button>
+            </form>
+            <button onClick={() => setCurrentView('home')} className="mt-4 text-xs text-zinc-600 hover:text-zinc-400 uppercase tracking-widest w-full text-center transition-colors">
+              Cancel
             </button>
           </div>
         ) : currentView === 'admin' && isAdmin ? (
-          <AdminDashboard jobs={jobs} onShowMessage={showMessage} onRefresh={() => loadJobs(true)} onExit={() => { setIsAdmin(false); setCurrentView('home'); }} />
+          <AdminDashboard jobs={jobs} onShowMessage={showMessage} onRefresh={() => loadJobs(true)} onExit={() => { setIsAdmin(false); setCurrentView('home'); }} onAddJob={() => setCurrentView('post')} />
         ) : currentView === 'submitting' ? (
           <div className="max-w-lg mx-auto mt-32 text-center">
             <div className="text-5xl mb-4 animate-pulse">⚡</div>
@@ -1433,7 +1846,7 @@ export default function App() {
               View Your Listing
             </a>
             <button
-              onClick={() => { setEditTarget(postedJob.slug); setCurrentView('edit'); }}
+              onClick={() => { setEditTarget(postedJob.slug); setEditPrefilledCode(postedJob.editCode || ''); setCurrentView('edit'); }}
               className="inline-block border border-zinc-700 hover:border-zinc-500 text-zinc-400 hover:text-zinc-100 font-bold uppercase tracking-wide px-8 py-3 rounded transition mb-4 w-full text-center text-sm"
             >
               Edit Your Listing
@@ -1442,14 +1855,17 @@ export default function App() {
               Back to Home
             </button>
           </div>
+        ) : currentView === 'job-detail' ? (
+          <JobDetailPage slug={jobDetailSlug} onBack={() => { window.history.pushState({}, '', '/'); setCurrentView('home'); }} />
         ) : currentView === 'post' ? (
           <JobForm onSave={handleAddJob} onDirectSave={handleAddJobDirect} onCancel={() => setCurrentView('home')} onShowMessage={showMessage} />
         ) : currentView === 'edit' ? (
           <EditPostGateway
             initialJobKey={editTarget}
+            initialCode={editPrefilledCode}
             onShowMessage={showMessage}
             onSaved={async () => { await loadJobs(isAdmin); setCurrentView('home'); }}
-            onCancel={() => setCurrentView('home')}
+            onCancel={() => { setEditPrefilledCode(''); setCurrentView('home'); }}
           />
         ) : (
           <>
@@ -1467,6 +1883,40 @@ export default function App() {
                     The premier dispatch board for biohazard remediation, trauma cleanup, and environmental hazard specialists. No fluff. Just the facts.
                   </p>
                 </div>
+              </div>
+            </section>
+
+            <section className="mb-10" aria-label="Why post here">
+              <h2 className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-5">Why Post Here?</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {[
+                  {
+                    icon: <Search className="w-5 h-5 text-amber-500" />,
+                    title: 'Google-Indexed Page',
+                    desc: 'Every listing gets a dedicated /jobs/slug URL, crawlable by Googlebot the same day it\'s published.',
+                  },
+                  {
+                    icon: <Cpu className="w-5 h-5 text-amber-500" />,
+                    title: 'AI-Optimized Listings',
+                    desc: 'Descriptions are rewritten for semantic search — discoverable by ChatGPT, Claude & Gemini, not just Google.',
+                  },
+                  {
+                    icon: <Target className="w-5 h-5 text-amber-500" />,
+                    title: 'Niche Audience',
+                    desc: 'Only biohazard and crime scene cleanup professionals visit this board. Zero noise, zero spam applications.',
+                  },
+                  {
+                    icon: <Clock className="w-5 h-5 text-amber-500" />,
+                    title: '45-Day Active Listing',
+                    desc: 'Your post stays live for 45 days. Edit anytime with your private code — no login required.',
+                  },
+                ].map(({ icon, title, desc }) => (
+                  <div key={title} className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 hover:border-amber-500/30 transition-colors">
+                    <div className="mb-3">{icon}</div>
+                    <h3 className="text-sm font-bold text-zinc-100 mb-2">{title}</h3>
+                    <p className="text-xs text-zinc-400 leading-relaxed">{desc}</p>
+                  </div>
+                ))}
               </div>
             </section>
 
@@ -1556,7 +2006,7 @@ export default function App() {
                   </div>
                 ) : (
                   filteredJobs.map(job => (
-                    <JobCard key={job.id} job={job} onDeleteRequest={isAdmin ? requestDeleteJob : undefined} onShowMessage={showMessage} />
+                    <JobCard key={job.id} job={job} onDeleteRequest={isAdmin ? requestDeleteJob : undefined} />
                   ))
                 )}
               </section>

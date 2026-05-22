@@ -51,6 +51,36 @@ export function clampLimit(value, fallback = 100, max = 500) {
   return Math.min(parsed, max);
 }
 
+export function getIp(request) {
+  return request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || 'unknown';
+}
+
+// Simple D1-backed rate limiter. Returns true if the request should be blocked.
+export async function isRateLimited(env, key, maxRequests, windowSeconds) {
+  if (!env.DB) return false;
+  const now = Math.floor(Date.now() / 1000);
+  const windowStart = now - windowSeconds;
+  try {
+    const row = await env.DB.prepare(
+      `SELECT attempts, window_start FROM edit_code_rate_limits WHERE ip = ? LIMIT 1`
+    ).bind(key).first();
+    if (!row || row.window_start < windowStart) {
+      await env.DB.prepare(
+        `INSERT INTO edit_code_rate_limits (ip, attempts, window_start) VALUES (?, 1, ?)
+         ON CONFLICT(ip) DO UPDATE SET attempts = 1, window_start = excluded.window_start`
+      ).bind(key, now).run();
+      return false;
+    }
+    if (row.attempts >= maxRequests) return true;
+    await env.DB.prepare(
+      `UPDATE edit_code_rate_limits SET attempts = attempts + 1 WHERE ip = ?`
+    ).bind(key).run();
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 export function html(body, status = 200, headers = {}) {
   return new Response(body, {
     status,

@@ -7,7 +7,8 @@ PUBLIC_SITE_URL = "https://crimescenecleanerjobs.com"
 DEFAULT_SCAN_LOCATION = "Nationwide"
 JOB_SCAN_QUERIES = "crime scene cleanup technician;biohazard remediation technician;trauma scene cleanup jobs;hazmat cleanup technician"
 AUTO_PUBLISH_JOBS = "false"
-AUTO_PUBLISH_MANUAL_JOBS = "true"
+AUTO_PUBLISH_MANUAL_JOBS = "false"
+SITE_KEYWORDS = "biohazard remediation, crime scene cleanup, trauma cleaning, hazmat technician"
 AUTO_PUBLISH_CONFIDENCE = "0.92"
 FETCH_SOURCE_PAGES = "false"
 EDIT_CODE_DAYS = "30"
@@ -21,6 +22,9 @@ binding = "DB"
 database_name = "crimescenecleanerjobs"
 database_id = "8c325955-88e1-4d55-bb9a-f53730386f25"
 migrations_dir = "migrations"
+
+[triggers]
+crons = ["0 3 * * *", "0 9 * * *"]
 
 [assets]
 directory = "./dist"

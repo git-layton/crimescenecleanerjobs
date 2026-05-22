@@ -1,16 +1,29 @@
 User-agent: *
 Allow: /
+Allow: /jobs/
+Disallow: /api/
+Disallow: /post-success
+Disallow: /?edit*
+Disallow: /?search*
 
 User-agent: GPTBot
 Allow: /
+Allow: /jobs/
+Disallow: /api/
 
 User-agent: ClaudeBot
 Allow: /
+Allow: /jobs/
+Disallow: /api/
 
 User-agent: PerplexityBot
 Allow: /
+Allow: /jobs/
+Disallow: /api/
 
 User-agent: Googlebot
 Allow: /
+Allow: /jobs/
+Disallow: /api/
 
 Sitemap: https://crimescenecleanerjobs.com/sitemap.xml

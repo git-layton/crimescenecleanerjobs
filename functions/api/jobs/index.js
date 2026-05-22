@@ -1,4 +1,4 @@
-import { clampLimit, getSiteUrl, isAdminRequest, json, problem, readJson } from '../../_lib/http.js';
+import { clampLimit, getIp, getSiteUrl, isAdminRequest, isRateLimited, json, problem, readJson } from '../../_lib/http.js';
 import { insertJob, listJobs } from '../../_lib/jobs.js';
 import { notifyGoogleIndexing } from '../../_lib/google-indexing.js';
 import { createEditCode } from '../../_lib/edit-codes.js';
@@ -24,10 +24,18 @@ export async function onRequestGet({ request, env }) {
 export async function onRequestPost({ request, env }) {
   if (!env.DB) return problem(503, 'D1 database binding DB is not configured.');
 
+  // 5 job posts per IP per hour for non-admins
+  if (!isAdminRequest(request, env) && await isRateLimited(env, `rl:post:${getIp(request)}`, 5, 3600)) {
+    return problem(429, 'Too many submissions. Try again later.');
+  }
+
   const body = await readJson(request);
   const isAdmin = isAdminRequest(request, env);
-  const autoPublishManual = env.AUTO_PUBLISH_MANUAL_JOBS !== 'false';
-  const requestedStatus = isAdmin && body.status === 'active' ? 'active' : body.source_type === 'import' ? 'pending' : autoPublishManual ? 'active' : 'pending';
+  const promoValid = body.promo_code && env.PROMO_CODE && body.promo_code === env.PROMO_CODE;
+  const requestedStatus = isAdmin && body.status === 'active' ? 'active'
+    : body.source_type === 'import' ? 'pending'
+    : promoValid ? 'active'
+    : 'pending';
 
   try {
     const siteUrl = getSiteUrl(env, request);

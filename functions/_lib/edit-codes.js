@@ -41,8 +41,8 @@ async function sha256(value) {
   return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
-async function hashEditCode(env, jobId, code) {
-  return sha256(`${env.EDIT_CODE_PEPPER || 'local-dev-pepper'}:${jobId}:${normalizeCode(code)}`);
+async function hashEditCode(env, code) {
+  return sha256(`${env.EDIT_CODE_PEPPER || 'local-dev-pepper'}:${normalizeCode(code)}`);
 }
 
 async function sendEditCodeEmail(env, { to, code, job, siteUrl, expiresAt }) {
@@ -60,20 +60,59 @@ async function sendEditCodeEmail(env, { to, code, job, siteUrl, expiresAt }) {
     body: JSON.stringify({
       from,
       to,
-      subject: `Edit code for ${job.title}`,
+      subject: `🔑 Your edit code — ${job.title} | CrimeSceneCleanerJobs`,
       text: [
-        `Your edit code for "${job.title}" is:`,
-        '',
+        `MISSION BRIEF — CrimeSceneCleanerJobs`,
+        ``,
+        `Your listing "${job.title}" is live.`,
+        ``,
+        `EDIT CODE:`,
         code,
-        '',
-        `Edit here: ${siteUrl}/?edit=${encodeURIComponent(job.slug)}`,
-        `This code expires ${new Date(expiresAt).toLocaleString('en-US', { timeZone: 'UTC' })} UTC.`,
+        ``,
+        `Use this code to edit your listing at any time:`,
+        `${siteUrl}/?edit=${encodeURIComponent(job.slug)}`,
+        ``,
+        `Code expires: ${new Date(expiresAt).toLocaleString('en-US', { timeZone: 'UTC' })} UTC`,
+        `Keep it somewhere safe — this is your key.`,
+        ``,
+        `— The CrimeSceneCleanerJobs Team`,
       ].join('\n'),
       html: `
-        <p>Your edit code for <strong>${escapeHtml(job.title)}</strong> is:</p>
-        <p style="font-size: 24px; letter-spacing: 2px;"><strong>${escapeHtml(code)}</strong></p>
-        <p><a href="${siteUrl}/?edit=${encodeURIComponent(job.slug)}">Edit your listing</a></p>
-        <p>This code expires ${escapeHtml(new Date(expiresAt).toISOString())}.</p>
+        <!doctype html>
+        <html>
+        <head><meta charset="utf-8"></head>
+        <body style="margin:0;padding:0;background:#09090b;font-family:Arial,sans-serif;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="background:#09090b;padding:40px 20px;">
+            <tr><td align="center">
+              <table width="560" cellpadding="0" cellspacing="0" style="background:#18181b;border:1px solid #27272a;border-radius:12px;overflow:hidden;max-width:560px;width:100%;">
+                <tr><td style="background:linear-gradient(90deg,#f59e0b,#d97706);height:4px;"></td></tr>
+                <tr><td style="padding:36px 40px 28px;">
+                  <p style="margin:0 0 4px;color:#f59e0b;font-size:11px;font-weight:700;letter-spacing:0.15em;text-transform:uppercase;">Mission Brief</p>
+                  <h1 style="margin:0 0 24px;color:#f4f4f5;font-size:22px;font-weight:900;letter-spacing:-0.02em;line-height:1.2;">Your listing is live.<br>Here's your edit code.</h1>
+                  <p style="margin:0 0 6px;color:#a1a1aa;font-size:13px;">Listing</p>
+                  <p style="margin:0 0 28px;color:#f4f4f5;font-size:15px;font-weight:700;">${escapeHtml(job.title)}</p>
+
+                  <div style="background:#09090b;border:1px solid #3f3f46;border-radius:8px;padding:24px;margin:0 0 28px;text-align:center;">
+                    <p style="margin:0 0 8px;color:#71717a;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;">Edit Code — Save This</p>
+                    <p style="margin:0;color:#f59e0b;font-size:32px;font-weight:900;letter-spacing:0.2em;font-family:monospace;">${escapeHtml(code)}</p>
+                  </div>
+
+                  <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 28px;">
+                    <tr><td align="center">
+                      <a href="${siteUrl}/?edit=${encodeURIComponent(job.slug)}" style="display:inline-block;background:#f59e0b;color:#09090b;text-decoration:none;font-weight:900;font-size:13px;letter-spacing:0.08em;text-transform:uppercase;padding:14px 32px;border-radius:6px;">Edit Your Listing →</a>
+                    </td></tr>
+                  </table>
+
+                  <p style="margin:0;color:#52525b;font-size:12px;line-height:1.6;">This code expires <strong style="color:#71717a;">${escapeHtml(new Date(expiresAt).toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric', timeZone:'UTC' })) }</strong>. Store it somewhere safe — it's the only way to edit your listing without contacting us.</p>
+                </td></tr>
+                <tr><td style="padding:20px 40px;border-top:1px solid #27272a;">
+                  <p style="margin:0;color:#3f3f46;font-size:11px;">CrimeSceneCleanerJobs &mdash; The premier board for biohazard remediation professionals.<br><a href="${siteUrl}" style="color:#52525b;">${siteUrl}</a></p>
+                </td></tr>
+              </table>
+            </td></tr>
+          </table>
+        </body>
+        </html>
       `,
     }),
   });
@@ -105,7 +144,7 @@ export async function createEditCode(env, job, options = {}) {
   const code = generateEditCode();
   const now = new Date().toISOString();
   const expiresAt = addDays(Number(env.EDIT_CODE_DAYS || 30));
-  const tokenHash = await hashEditCode(env, job.id, code);
+  const tokenHash = await hashEditCode(env, code);
   const id = crypto.randomUUID();
 
   await env.DB.prepare(
@@ -160,22 +199,31 @@ export async function requestEditCode(env, { idOrSlug, email, siteUrl }) {
 }
 
 export async function verifyEditCode(env, idOrSlug, code, options = {}) {
-  const job = await getJob(env, idOrSlug, { includeInactive: true, siteUrl: options.siteUrl });
-  if (!job) return null;
+  const tokenHash = await hashEditCode(env, code);
+  const now = new Date().toISOString();
 
-  const tokenHash = await hashEditCode(env, job.id, code);
+  if (idOrSlug) {
+    const job = await getJob(env, idOrSlug, { includeInactive: true, siteUrl: options.siteUrl });
+    if (!job) return null;
+    const row = await env.DB.prepare(
+      `SELECT * FROM post_edit_codes WHERE job_id = ? AND token_hash = ? AND expires_at > ? ORDER BY created_at DESC LIMIT 1`
+    ).bind(job.id, tokenHash, now).first();
+    if (!row) return null;
+    return { job, code_id: row.id, owner_email: row.owner_email, expires_at: row.expires_at };
+  }
+
+  // Code-only lookup: find job_id from the code hash
   const row = await env.DB.prepare(
-    `SELECT * FROM post_edit_codes
-     WHERE job_id = ? AND token_hash = ? AND expires_at > ?
-     ORDER BY created_at DESC LIMIT 1`
-  ).bind(job.id, tokenHash, new Date().toISOString()).first();
-
+    `SELECT * FROM post_edit_codes WHERE token_hash = ? AND expires_at > ? ORDER BY created_at DESC LIMIT 1`
+  ).bind(tokenHash, now).first();
   if (!row) return null;
+  const job = await getJob(env, row.job_id, { includeInactive: true, siteUrl: options.siteUrl });
+  if (!job) return null;
   return { job, code_id: row.id, owner_email: row.owner_email, expires_at: row.expires_at };
 }
 
 export async function updateJobWithEditCode(env, { idOrSlug, code, patch, siteUrl }) {
-  const verified = await verifyEditCode(env, idOrSlug, code, { siteUrl });
+  const verified = await verifyEditCode(env, idOrSlug || '', code, { siteUrl });
   if (!verified) {
     throw new Error('Invalid or expired edit code.');
   }

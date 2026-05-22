@@ -301,6 +301,8 @@ export async function listJobs(env, options = {}) {
 
   if (!options.includeInactive) {
     where.push("status = 'active'");
+    where.push("(expires_at IS NULL OR expires_at > ?)");
+    params.push(new Date().toISOString());
   } else if (options.status && options.status !== 'all') {
     where.push('status = ?');
     params.push(options.status);

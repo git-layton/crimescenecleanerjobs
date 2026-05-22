@@ -44,7 +44,13 @@ export async function onRequestGet({ request, env, params }) {
   const jsonLd = buildJobPostingJsonLd(job, siteUrl);
   const title = `${job.title} at ${job.company} | CrimeSceneCleanerJobs`;
   const description = (job.description || '').replace(/\s+/g, ' ').slice(0, 155);
-  const applyTarget = job.apply_url || (job.contact_email ? `mailto:${job.contact_email}` : job.source_url || '/');
+
+  // Determine apply type
+  const isPhone = (v) => v && /^\+?[\d\s\-()+]{7,}$/.test(String(v).trim());
+  const contactEmail = job.contact_email || (job.contact && job.contact.includes('@') ? job.contact : null);
+  const contactPhone = !contactEmail && isPhone(job.contact) ? job.contact : null;
+  const applyType = job.apply_url ? 'url' : contactEmail ? 'email' : contactPhone ? 'phone' : 'url';
+  const applyTarget = job.apply_url || (contactEmail ? `mailto:${contactEmail}` : contactPhone ? `tel:${contactPhone.replace(/\s/g, '')}` : '/');
 
   return html(`<!doctype html>
 <html lang="en">
@@ -87,15 +93,29 @@ export async function onRequestGet({ request, env, params }) {
       <p class="eyebrow">${escapeHtml(job.category)} role</p>
       <h1>${escapeHtml(job.title)}</h1>
       <div class="meta">
-        <span>${escapeHtml(job.company)}</span>
-        <span>${escapeHtml([job.city, job.state].filter(Boolean).join(', '))}</span>
+        ${job.company_url
+          ? `<span><a href="${escapeHtml(job.company_url)}" rel="noopener noreferrer" style="color:#f59e0b">${escapeHtml(job.company)}</a></span>`
+          : `<span>${escapeHtml(job.company)}</span>`}
+        <span><a href="https://www.google.com/maps/search/${encodeURIComponent([job.city, job.state].filter(Boolean).join(', '))}" target="_blank" rel="noopener noreferrer" style="color:inherit">${escapeHtml([job.city, job.state].filter(Boolean).join(', '))}</a></span>
         <span>${escapeHtml(formatPay(job))}</span>
       </div>
-      <a class="button" href="${escapeHtml(applyTarget)}" rel="nofollow noopener">Apply now</a>
+      ${applyType === 'url'
+        ? `<a class="button" href="${escapeHtml(applyTarget)}" target="_blank" rel="nofollow noopener">Apply Online</a>`
+        : applyType === 'email'
+          ? `<div style="margin:18px 0;"><p style="color:#71717a;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin:0 0 6px;">Apply by Email</p><a href="${escapeHtml(applyTarget)}" style="color:#f59e0b;font-family:monospace;font-size:15px;">${escapeHtml(contactEmail)}</a></div>`
+          : applyType === 'phone'
+            ? `<div style="margin:18px 0;"><p style="color:#71717a;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin:0 0 6px;">Contact to Apply</p><span style="color:#e4e4e7;font-family:monospace;font-size:15px;">${escapeHtml(contactPhone)}</span></div>`
+            : ''}
       <section class="panel">
         <h2>Job Details</h2>
         <div class="description">${sanitizeHtml(job.description)}</div>
       </section>
+      ${job.apply_url || job.contact_email ? `
+      <section class="panel">
+        <h2>How to Apply</h2>
+        ${job.apply_url ? `<p><a href="${escapeHtml(job.apply_url)}" rel="nofollow noopener">${escapeHtml(job.apply_url)}</a></p>` : ''}
+        ${job.contact_email && !job.apply_url ? `<p><a href="mailto:${escapeHtml(job.contact_email)}">${escapeHtml(job.contact_email)}</a></p>` : ''}
+      </section>` : ''}
       ${job.source_url ? `<p>Original listing: <a href="${escapeHtml(job.source_url)}" rel="nofollow noopener">${escapeHtml(job.source_name || job.source_url)}</a></p>` : ''}
     </main>
   </body>

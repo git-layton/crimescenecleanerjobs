@@ -1,10 +1,12 @@
-import { json, problem, readJson } from '../_lib/http.js';
+import { json, problem, readJson, requireAdmin } from '../_lib/http.js';
 
 const ALLOWED_EVENTS = new Set([
   'submit_click',
   'payment_initiated',
   'payment_completed',
   'job_posted',
+  'job_view',
+  'apply_click',
 ]);
 
 export async function onRequestPost({ request, env }) {
@@ -27,6 +29,8 @@ export async function onRequestPost({ request, env }) {
 
 export async function onRequestGet({ request, env }) {
   if (!env.DB) return problem(503, 'DB not configured.');
+  const adminProblem = requireAdmin(request, env);
+  if (adminProblem) return adminProblem;
   const days = 30;
   const since = new Date(Date.now() - days * 86400000).toISOString();
 

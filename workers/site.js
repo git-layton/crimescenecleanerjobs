@@ -2,6 +2,9 @@ import { onRequestGet as getJobs, onRequestPost as postJob } from '../functions/
 import { onRequestGet as getJob, onRequestDelete as deleteJob, onRequestPatch as patchJob } from '../functions/api/jobs/[id].js';
 import { onRequestPost as parseJob } from '../functions/api/parse-job.js';
 import { onRequestPost as scanJobs } from '../functions/api/admin/scan.js';
+import { onRequestGet as getScanHistory } from '../functions/api/admin/scan-history.js';
+import { onRequestGet as getAnalytics } from '../functions/api/admin/analytics.js';
+import { onRequestPost as verifyAdminToken } from '../functions/api/admin/verify.js';
 import { onRequestGet as getCandidates } from '../functions/api/admin/candidates/index.js';
 import { onRequestPost as approveCandidate } from '../functions/api/admin/candidates/[id]/approve.js';
 import { onRequestPost as rejectCandidate } from '../functions/api/admin/candidates/[id]/reject.js';
@@ -14,6 +17,7 @@ import { onRequestPost as requestIndexing } from '../functions/api/admin/indexin
 import { onRequestGet as getGoogleJobsFeed } from '../functions/api/google/jobs.json.js';
 import { onRequestGet as getSitemap } from '../functions/sitemap.xml.js';
 import { onRequestGet as getJobPage } from '../functions/jobs/[slug].js';
+import { runDailyImport } from '../functions/_lib/agent.js';
 
 const methodNotAllowed = () => new Response('Method not allowed', {
   status: 405,
@@ -37,10 +41,12 @@ async function health(request, env) {
 
   if (env.DB) {
     try {
-      const result = await env.DB.prepare(
-        "SELECT status, COUNT(*) AS count FROM jobs GROUP BY status ORDER BY status"
-      ).all();
-      status.counts = Object.fromEntries((result.results || []).map(row => [row.status, row.count]));
+      const [countsResult, lastScan] = await Promise.all([
+        env.DB.prepare("SELECT status, COUNT(*) AS count FROM jobs GROUP BY status ORDER BY status").all(),
+        env.DB.prepare("SELECT finished_at FROM import_runs WHERE status = 'complete' ORDER BY finished_at DESC LIMIT 1").first(),
+      ]);
+      status.counts = Object.fromEntries((countsResult.results || []).map(row => [row.status, row.count]));
+      status.last_scan_at = lastScan?.finished_at || null;
     } catch (error) {
       status.ok = false;
       status.db_error = error.message;
@@ -58,8 +64,25 @@ function run(handler, request, env, ctx, params = {}) {
 
 async function routeRequest(request, env, ctx) {
   const url = new URL(request.url);
-  const pathname = url.pathname.replace(/\/+$/, '') || '/';
   const method = request.method.toUpperCase();
+
+  // Redirect .workers.dev to the canonical production domain
+  const productionHost = (env.PUBLIC_SITE_URL || '').replace(/^https?:\/\//, '').replace(/\/+$/, '');
+  if (productionHost && url.hostname !== productionHost && url.hostname.endsWith('.workers.dev')) {
+    const canonical = new URL(request.url);
+    canonical.hostname = productionHost;
+    canonical.protocol = 'https:';
+    return Response.redirect(canonical.toString(), 301);
+  }
+
+  // Redirect trailing slashes (except root) to canonical path
+  if (url.pathname.length > 1 && url.pathname.endsWith('/')) {
+    const canonical = new URL(request.url);
+    canonical.pathname = url.pathname.replace(/\/+$/, '');
+    return Response.redirect(canonical.toString(), 301);
+  }
+
+  const pathname = url.pathname || '/';
 
   if (pathname === '/api/health' && method === 'GET') {
     return health(request, env);
@@ -94,8 +117,20 @@ async function routeRequest(request, env, ctx) {
     return methodNotAllowed();
   }
 
+  if (pathname === '/api/admin/verify' && method === 'POST') {
+    return run(verifyAdminToken, request, env, ctx);
+  }
+
   if (pathname === '/api/admin/scan' && method === 'POST') {
     return run(scanJobs, request, env, ctx);
+  }
+
+  if (pathname === '/api/admin/scan-history' && method === 'GET') {
+    return run(getScanHistory, request, env, ctx);
+  }
+
+  if (pathname === '/api/admin/analytics' && method === 'GET') {
+    return run(getAnalytics, request, env, ctx);
   }
 
   if (pathname === '/api/admin/candidates' && method === 'GET') {
@@ -148,8 +183,23 @@ async function routeRequest(request, env, ctx) {
   return new Response('Not found', { status: 404 });
 }
 
+async function archiveExpiredJobs(env) {
+  if (!env.DB) return;
+  const now = new Date().toISOString();
+  await env.DB.prepare(
+    `UPDATE jobs SET status = 'archived', updated_at = ? WHERE status = 'active' AND expires_at IS NOT NULL AND expires_at < ?`
+  ).bind(now, now).run();
+}
+
 export default {
   fetch(request, env, ctx) {
     return routeRequest(request, env, ctx);
+  },
+  scheduled(event, env, ctx) {
+    if (event.cron === '0 9 * * *') {
+      ctx.waitUntil(runDailyImport(env, { trigger: 'cron' }).catch(err => console.error('Daily import error:', err)));
+    } else {
+      ctx.waitUntil(archiveExpiredJobs(env));
+    }
   },
 };
