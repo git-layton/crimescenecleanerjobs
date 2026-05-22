@@ -1083,6 +1083,12 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
   const [scanHistory, setScanHistory] = useState(null);
   const [healthData, setHealthData] = useState(null);
   const [autoPublish, setAutoPublish] = useState(false);
+  const [scanEnabled, setScanEnabled] = useState(true);
+  const [scanQueries, setScanQueries] = useState([]);
+  const [scanDefaultLocation, setScanDefaultLocation] = useState('Nationwide');
+  const [newQuery, setNewQuery] = useState('');
+  const [editingQueryIdx, setEditingQueryIdx] = useState(null);
+  const [editingQueryVal, setEditingQueryVal] = useState('');
   const [dbSearch, setDbSearch] = useState('');
   const [dbStatusFilter, setDbStatusFilter] = useState('all');
   const [editingJob, setEditingJob] = useState(null);
@@ -1094,12 +1100,16 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
       dbService.getScanHistory(),
       fetch('/api/health').then(r => r.json()),
       dbService.getSettings(),
-    ]).then(([candidates, history, health, settings]) => {
+    ]).then(([candidates, history, health, { settings }]) => {
       if (!isMounted) return;
       setScrapedJobs(candidates);
       setScanHistory(history.runs || []);
       setHealthData(health);
-      setAutoPublish(settings.settings?.auto_publish_jobs === 'true');
+      setAutoPublish(settings?.auto_publish_jobs === 'true');
+      setScanEnabled(settings?.scan_enabled !== 'false');
+      setScanDefaultLocation(settings?.scan_location || 'Nationwide');
+      const raw = settings?.scan_queries || '';
+      setScanQueries(raw.split(';').map(q => q.trim()).filter(Boolean));
     }).catch(err => console.error('Admin init failed:', err));
     return () => { isMounted = false; };
   }, []);
@@ -1107,6 +1117,40 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
   const toggleAutoPublish = async (val) => {
     setAutoPublish(val);
     await dbService.updateSettings({ auto_publish_jobs: String(val) }).catch(() => setAutoPublish(!val));
+  };
+
+  const toggleScanEnabled = async (val) => {
+    setScanEnabled(val);
+    await dbService.updateSettings({ scan_enabled: String(val) }).catch(() => setScanEnabled(!val));
+  };
+
+  const saveQueries = async (queries) => {
+    setScanQueries(queries);
+    await dbService.updateSettings({ scan_queries: queries.join(';') }).catch(() => {});
+  };
+
+  const addQuery = async () => {
+    const q = newQuery.trim();
+    if (!q || scanQueries.includes(q)) return;
+    setNewQuery('');
+    await saveQueries([...scanQueries, q]);
+  };
+
+  const removeQuery = async (idx) => {
+    await saveQueries(scanQueries.filter((_, i) => i !== idx));
+  };
+
+  const saveEditedQuery = async (idx) => {
+    const q = editingQueryVal.trim();
+    if (!q) return;
+    const updated = scanQueries.map((v, i) => i === idx ? q : v);
+    setEditingQueryIdx(null);
+    await saveQueries(updated);
+  };
+
+  const saveLocation = async (val) => {
+    setScanDefaultLocation(val);
+    await dbService.updateSettings({ scan_location: val }).catch(() => {});
   };
 
   const runSourceScan = async () => {
@@ -1208,17 +1252,25 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
         {activeTab === 'aggregator' ? (
           <div className="space-y-6">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-5">
-                <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-3 flex items-center gap-2">
-                  <Cpu className="w-3.5 h-3.5 text-amber-500" /> Scheduled Scan
-                </h3>
-                <p className="text-sm text-zinc-100 font-mono mb-1">Daily at 9:00 AM UTC</p>
-                <p className="text-xs text-zinc-500 mb-4">
-                  Last run: {healthData?.last_scan_at
-                    ? new Date(healthData.last_scan_at).toLocaleString()
-                    : 'Never'}
-                </p>
+              <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-5 space-y-4">
                 <div className="flex items-center justify-between">
+                  <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2">
+                    <Cpu className="w-3.5 h-3.5 text-amber-500" /> Scheduled Scan
+                  </h3>
+                  <button
+                    onClick={() => toggleScanEnabled(!scanEnabled)}
+                    aria-pressed={scanEnabled}
+                    aria-label={scanEnabled ? 'Disable scheduled scan' : 'Enable scheduled scan'}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${scanEnabled ? 'bg-amber-500' : 'bg-zinc-700'}`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-zinc-100 transition-transform ${scanEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                </div>
+                <div>
+                  <p className="text-xs text-zinc-400">Daily at <span className="text-zinc-100 font-mono">9:00 AM UTC</span> {!scanEnabled && <span className="text-red-400 font-bold">(disabled)</span>}</p>
+                  <p className="text-[10px] text-zinc-600 mt-1">Last run: {healthData?.last_scan_at ? new Date(healthData.last_scan_at).toLocaleString() : 'Never'}</p>
+                </div>
+                <div className="flex items-center justify-between pt-2 border-t border-zinc-800">
                   <div>
                     <p className="text-xs font-bold text-zinc-300">Auto-publish high confidence</p>
                     <p className="text-[10px] text-zinc-600 mt-0.5">Publish jobs ≥92% confidence automatically</p>
@@ -1226,12 +1278,13 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
                   <button
                     onClick={() => toggleAutoPublish(!autoPublish)}
                     aria-pressed={autoPublish}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 ${autoPublish ? 'bg-amber-500' : 'bg-zinc-700'}`}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${autoPublish ? 'bg-amber-500' : 'bg-zinc-700'}`}
                   >
                     <span className={`inline-block h-4 w-4 transform rounded-full bg-zinc-100 transition-transform ${autoPublish ? 'translate-x-6' : 'translate-x-1'}`} />
                   </button>
                 </div>
               </div>
+
               <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-5">
                 <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-3">Manual Scan</h3>
                 <div className="flex gap-2 mb-3">
@@ -1240,6 +1293,65 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
                 </div>
                 <button onClick={runSourceScan} disabled={isScanning} className="w-full bg-amber-500 hover:bg-amber-400 disabled:bg-zinc-800 text-zinc-950 disabled:text-zinc-500 font-bold uppercase tracking-wide py-2 px-4 rounded text-xs flex items-center justify-center gap-2">
                   {isScanning ? <><Activity className="w-3.5 h-3.5 animate-spin" /> Scanning...</> : <><Radar className="w-3.5 h-3.5" /> Run Scan Now</>}
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Daily Scan Queries</h3>
+                <div className="flex items-center gap-2">
+                  <label className="text-[10px] text-zinc-500 uppercase tracking-widest">Default location</label>
+                  <input
+                    type="text"
+                    value={scanDefaultLocation}
+                    onChange={e => setScanDefaultLocation(e.target.value)}
+                    onBlur={e => saveLocation(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && saveLocation(e.target.value)}
+                    className="w-32 p-1.5 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 text-xs font-mono focus:border-amber-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2 mb-3">
+                {scanQueries.length === 0 && (
+                  <p className="text-zinc-600 text-xs font-mono">No queries configured. Add one below.</p>
+                )}
+                {scanQueries.map((q, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    {editingQueryIdx === idx ? (
+                      <>
+                        <input
+                          autoFocus
+                          type="text"
+                          value={editingQueryVal}
+                          onChange={e => setEditingQueryVal(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') saveEditedQuery(idx); if (e.key === 'Escape') setEditingQueryIdx(null); }}
+                          className="flex-1 p-1.5 bg-zinc-900 border border-amber-500 rounded text-zinc-100 text-xs font-mono focus:outline-none"
+                        />
+                        <button onClick={() => saveEditedQuery(idx)} className="text-[10px] font-bold text-amber-400 hover:text-amber-300 uppercase tracking-widest shrink-0">Save</button>
+                        <button onClick={() => setEditingQueryIdx(null)} className="text-[10px] text-zinc-600 hover:text-zinc-400 uppercase tracking-widest shrink-0">Cancel</button>
+                      </>
+                    ) : (
+                      <>
+                        <span className="flex-1 text-xs text-zinc-300 font-mono bg-zinc-900 border border-zinc-800 rounded px-3 py-1.5">{q}</span>
+                        <button onClick={() => { setEditingQueryIdx(idx); setEditingQueryVal(q); }} className="text-[10px] text-zinc-500 hover:text-amber-400 uppercase tracking-widest shrink-0">Edit</button>
+                        <button onClick={() => removeQuery(idx)} className="text-zinc-600 hover:text-red-500 transition-colors shrink-0"><X className="w-3.5 h-3.5" /></button>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newQuery}
+                  onChange={e => setNewQuery(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && addQuery()}
+                  placeholder="Add a search query..."
+                  className="flex-1 p-2 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 text-xs font-mono focus:border-amber-500 focus:outline-none placeholder-zinc-600"
+                />
+                <button onClick={addQuery} disabled={!newQuery.trim()} className="bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-zinc-100 font-bold uppercase tracking-wide py-2 px-4 rounded text-xs flex items-center gap-1.5">
+                  <PlusCircle className="w-3.5 h-3.5" /> Add
                 </button>
               </div>
             </div>
@@ -1272,22 +1384,65 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
                   Pending Review ({scrapedJobs.length})
                 </h3>
                 <div className="space-y-3">
-                  {scrapedJobs.map(job => (
-                    <div key={job.id} className="bg-zinc-950 border border-zinc-800 p-4 rounded-lg flex justify-between items-center group hover:border-amber-500/30 transition-colors">
-                      <div>
-                        <h4 className="text-sm font-bold text-zinc-100">{job.title}</h4>
-                        <p className="text-xs text-zinc-400">{job.company || 'Unknown'} • {[job.city, job.state].filter(Boolean).join(', ') || 'No location'}</p>
-                        <p className="text-[10px] text-zinc-600 font-mono mt-1">
-                          {Math.round(Number(job.confidence || 0) * 100)}% confidence
-                          {job.source_url && <> • <a href={job.source_url} target="_blank" rel="noreferrer" className="text-amber-500 hover:text-amber-400">source</a></>}
-                        </p>
+                  {scrapedJobs.map(job => {
+                    const payload = job.payload || job;
+                    const confidence = Math.round(Number(job.confidence || payload.confidence || 0) * 100);
+                    const missing = [];
+                    if (!payload.title) missing.push('title');
+                    if (!payload.company) missing.push('company');
+                    if (!payload.city && !payload.state) missing.push('location');
+                    if (!payload.apply_url && !payload.contact_email) missing.push('apply info');
+                    if (!payload.description) missing.push('description');
+                    const isExpanded = job._expanded;
+                    return (
+                      <div key={job.id} className={`bg-zinc-950 border rounded-lg transition-colors ${isExpanded ? 'border-amber-500/40' : 'border-zinc-800 hover:border-amber-500/20'}`}>
+                        <div className="p-4 flex items-start justify-between gap-3">
+                          <button
+                            onClick={() => setScrapedJobs(prev => prev.map(j => j.id === job.id ? { ...j, _expanded: !j._expanded } : j))}
+                            className="flex-1 text-left min-w-0"
+                          >
+                            <div className="flex flex-wrap items-center gap-2 mb-1">
+                              <h4 className="text-sm font-bold text-zinc-100">{payload.title || <span className="text-red-400 italic">No title</span>}</h4>
+                              <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${confidence >= 80 ? 'bg-green-500/15 text-green-400' : confidence >= 60 ? 'bg-amber-500/15 text-amber-400' : 'bg-red-500/15 text-red-400'}`}>{confidence}%</span>
+                              {missing.length > 0 && <span className="text-[10px] text-red-400 font-mono">missing: {missing.join(', ')}</span>}
+                            </div>
+                            <p className="text-xs text-zinc-400">{payload.company || <span className="text-red-400 italic">Unknown company</span>} • {[payload.city, payload.state].filter(Boolean).join(', ') || <span className="text-zinc-600 italic">No location</span>}</p>
+                          </button>
+                          <div className="flex gap-2 shrink-0">
+                            <button onClick={() => rejectJob(job.id)} aria-label={`Reject ${payload.title}`} className="p-2 bg-zinc-900 hover:bg-red-500/20 text-zinc-500 hover:text-red-500 rounded border border-zinc-800"><X className="w-4 h-4" /></button>
+                            <button onClick={() => approveJob(job)} aria-label={`Approve ${payload.title}`} className="p-2 bg-zinc-900 hover:bg-green-500/20 text-zinc-500 hover:text-green-500 rounded border border-zinc-800"><Download className="w-4 h-4" /></button>
+                          </div>
+                        </div>
+
+                        {isExpanded && (
+                          <div className="border-t border-zinc-800 p-4 space-y-3 text-xs">
+                            <div className="grid grid-cols-2 gap-3">
+                              {[
+                                { label: 'Apply URL', val: payload.apply_url },
+                                { label: 'Contact Email', val: payload.contact_email },
+                                { label: 'Pay', val: payload.pay_min || payload.pay_max ? `$${payload.pay_min || '?'}–$${payload.pay_max || '?'} ${payload.pay_type || ''}` : null },
+                                { label: 'Employment', val: payload.employment_type },
+                                { label: 'Source', val: job.source_url || payload.source_url },
+                              ].map(({ label, val }) => (
+                                <div key={label}>
+                                  <p className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest">{label}</p>
+                                  {val
+                                    ? <p className="text-zinc-300 font-mono break-all">{val.length > 60 ? <a href={val} target="_blank" rel="noreferrer" className="text-amber-400 hover:text-amber-300">{val.slice(0, 60)}…</a> : val}</p>
+                                    : <p className="text-red-400 italic">Missing</p>}
+                                </div>
+                              ))}
+                            </div>
+                            {payload.description && (
+                              <div>
+                                <p className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest mb-1">Description preview</p>
+                                <div className="text-zinc-400 leading-relaxed max-h-40 overflow-y-auto prose-sm" dangerouslySetInnerHTML={{ __html: payload.description.slice(0, 600) + (payload.description.length > 600 ? '…' : '') }} />
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
-                      <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => rejectJob(job.id)} aria-label={`Reject ${job.title}`} className="p-2 bg-zinc-900 hover:bg-red-500/20 text-zinc-500 hover:text-red-500 rounded border border-zinc-800"><X className="w-4 h-4" /></button>
-                        <button onClick={() => approveJob(job)} aria-label={`Approve ${job.title}`} className="p-2 bg-zinc-900 hover:bg-green-500/20 text-zinc-500 hover:text-green-500 rounded border border-zinc-800"><Download className="w-4 h-4" /></button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}

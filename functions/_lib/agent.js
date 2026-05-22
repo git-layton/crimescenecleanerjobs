@@ -139,20 +139,37 @@ async function finishRun(env, id, summary, error = '') {
   ).run();
 }
 
+async function getSetting(env, key) {
+  if (!env.DB) return null;
+  const row = await env.DB.prepare(`SELECT value FROM site_settings WHERE key = ? LIMIT 1`).bind(key).first().catch(() => null);
+  return row?.value ?? null;
+}
+
 export async function runDailyImport(env, options = {}) {
-  const queries = options.query
-    ? [options.query]
-    : splitConfigList(env.JOB_SCAN_QUERIES, [
-      'crime scene cleanup technician',
-      'biohazard remediation technician',
-      'trauma scene cleanup jobs',
-      'hazmat cleanup technician',
-    ]);
-  const location = options.location || env.DEFAULT_SCAN_LOCATION || 'Nationwide';
+  // For cron trigger, check if scanning is enabled
+  if (options.trigger === 'cron') {
+    const enabled = await getSetting(env, 'scan_enabled');
+    if (enabled === 'false') return { skipped: true, reason: 'Scanning disabled in admin settings' };
+  }
+
+  let queries;
+  if (options.query) {
+    queries = [options.query];
+  } else {
+    const dbQueries = await getSetting(env, 'scan_queries');
+    queries = splitConfigList(
+      dbQueries || env.JOB_SCAN_QUERIES,
+      ['crime scene cleanup technician', 'biohazard remediation technician', 'trauma scene cleanup jobs', 'hazmat cleanup technician']
+    );
+  }
+
+  const dbLocation = await getSetting(env, 'scan_location');
+  const location = options.location || dbLocation || env.DEFAULT_SCAN_LOCATION || 'Nationwide';
+
   let autoPublish = options.autoPublish ?? (env.AUTO_PUBLISH_JOBS === 'true');
-  if (!autoPublish && env.DB) {
-    const setting = await env.DB.prepare(`SELECT value FROM site_settings WHERE key = 'auto_publish_jobs' LIMIT 1`).first().catch(() => null);
-    if (setting?.value === 'true') autoPublish = true;
+  if (!autoPublish) {
+    const setting = await getSetting(env, 'auto_publish_jobs');
+    if (setting === 'true') autoPublish = true;
   }
   const publishThreshold = Number(env.AUTO_PUBLISH_CONFIDENCE || 0.92);
   const summary = { discovered: 0, candidates: 0, published: 0, skipped: 0, errors: [] };
