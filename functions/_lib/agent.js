@@ -171,6 +171,10 @@ export async function runDailyImport(env, options = {}) {
     const setting = await getSetting(env, 'auto_publish_jobs');
     if (setting === 'true') autoPublish = true;
   }
+  if (autoPublish) {
+    const until = await getSetting(env, 'auto_publish_until');
+    if (until && new Date() > new Date(until)) autoPublish = false;
+  }
   const publishThreshold = Number(env.AUTO_PUBLISH_CONFIDENCE || 0.92);
   const summary = { discovered: 0, candidates: 0, published: 0, skipped: 0, errors: [] };
   const allCandidates = [];
@@ -233,7 +237,9 @@ export async function runDailyImport(env, options = {}) {
             allCandidates.push(candidate);
           }
 
-          if (autoPublish && Number(payload.confidence || 0) >= publishThreshold) {
+          const hasApply = payload.apply_url || payload.contact_email || payload.source_url;
+          const meetsRequirements = payload.company && hasApply;
+          if (autoPublish && meetsRequirements && Number(payload.confidence || 0) >= publishThreshold) {
             await insertJob(env, { ...payload, status: 'active' }, { defaultStatus: 'active' });
             summary.published += 1;
           }

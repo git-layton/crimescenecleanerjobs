@@ -1090,6 +1090,7 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
   const [scanHistory, setScanHistory] = useState(null);
   const [healthData, setHealthData] = useState(null);
   const [autoPublish, setAutoPublish] = useState(false);
+  const [autoPublishUntil, setAutoPublishUntil] = useState('');
   const [scanEnabled, setScanEnabled] = useState(true);
   const [scanQueries, setScanQueries] = useState([]);
   const [scanDefaultLocation, setScanDefaultLocation] = useState('Nationwide');
@@ -1115,6 +1116,7 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
       setScanHistory(history.runs || []);
       setHealthData(health);
       setAutoPublish(settings?.auto_publish_jobs === 'true');
+      setAutoPublishUntil(settings?.auto_publish_until || '');
       setScanEnabled(settings?.scan_enabled !== 'false');
       setScanDefaultLocation(settings?.scan_location || 'Nationwide');
       const raw = settings?.scan_queries || '';
@@ -1125,7 +1127,14 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
 
   const toggleAutoPublish = async (val) => {
     setAutoPublish(val);
-    await dbService.updateSettings({ auto_publish_jobs: String(val) }).catch(() => setAutoPublish(!val));
+    const updates = { auto_publish_jobs: String(val) };
+    if (!val) { setAutoPublishUntil(''); updates.auto_publish_until = ''; }
+    await dbService.updateSettings(updates).catch(() => setAutoPublish(!val));
+  };
+
+  const setAutoPublishUntilDate = async (val) => {
+    setAutoPublishUntil(val);
+    await dbService.updateSettings({ auto_publish_until: val }).catch(() => {});
   };
 
   const toggleScanEnabled = async (val) => {
@@ -1295,7 +1304,7 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
                 <div className="flex items-center justify-between pt-2 border-t border-zinc-800">
                   <div>
                     <p className="text-xs font-bold text-zinc-300">Auto-publish high confidence</p>
-                    <p className="text-[10px] text-zinc-600 mt-0.5">Publish jobs ≥92% confidence automatically</p>
+                    <p className="text-[10px] text-zinc-600 mt-0.5">Publish jobs ≥92% confidence + company + apply link</p>
                   </div>
                   <button
                     onClick={() => toggleAutoPublish(!autoPublish)}
@@ -1305,6 +1314,20 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
                     <span className={`inline-block h-4 w-4 transform rounded-full bg-zinc-100 transition-transform ${autoPublish ? 'translate-x-6' : 'translate-x-1'}`} />
                   </button>
                 </div>
+                {autoPublish && (
+                  <div className="flex items-center justify-between pt-2">
+                    <div>
+                      <p className="text-xs text-zinc-400">Stop auto-publish after</p>
+                      <p className="text-[10px] text-zinc-600 mt-0.5">{autoPublishUntil ? `Expires ${new Date(autoPublishUntil).toLocaleDateString()}` : 'No end date'}</p>
+                    </div>
+                    <input
+                      type="date"
+                      value={autoPublishUntil}
+                      onChange={e => setAutoPublishUntilDate(e.target.value)}
+                      className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-300 font-mono focus:border-amber-500 focus:outline-none"
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-5">
@@ -1387,12 +1410,16 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
                   {scrapedJobs.map(job => {
                     const payload = job.payload || job;
                     const confidence = Math.round(Number(job.confidence || payload.confidence || 0) * 100);
-                    const missing = [];
-                    if (!payload.title) missing.push('title');
-                    if (!payload.company) missing.push('company');
-                    if (!payload.city && !payload.state) missing.push('location');
-                    if (!payload.apply_url && !payload.contact_email) missing.push('apply info');
-                    if (!payload.description) missing.push('description');
+                    const sourceUrl = job.source_url || payload.source_url || '';
+                    const hasApply = payload.apply_url || payload.contact_email || sourceUrl;
+                    const missingBlocking = [];
+                    if (!payload.company) missingBlocking.push('company');
+                    if (!hasApply) missingBlocking.push('apply link');
+                    const missingOptional = [];
+                    if (!payload.title) missingOptional.push('title');
+                    if (!payload.city && !payload.state) missingOptional.push('location');
+                    if (!payload.description) missingOptional.push('description');
+                    const isReady = missingBlocking.length === 0;
                     const isExpanded = job._expanded;
                     const discoveredDate = job.discovered_at ? new Date(job.discovered_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : null;
                     return (
@@ -1405,7 +1432,10 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
                             <div className="flex flex-wrap items-center gap-2 mb-1">
                               <h4 className="text-sm font-bold text-zinc-100">{payload.title || <span className="text-red-400 italic">No title</span>}</h4>
                               <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${confidence >= 80 ? 'bg-green-500/15 text-green-400' : confidence >= 60 ? 'bg-amber-500/15 text-amber-400' : 'bg-red-500/15 text-red-400'}`}>{confidence}%</span>
-                              {missing.length > 0 && <span className="text-[10px] text-red-400 font-mono">missing: {missing.join(', ')}</span>}
+                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${isReady ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'}`}>
+                                {isReady ? '✓ Ready' : `✗ ${missingBlocking.join(', ')}`}
+                              </span>
+                              {missingOptional.length > 0 && <span className="text-[10px] text-zinc-500 font-mono">missing: {missingOptional.join(', ')}</span>}
                             </div>
                             <p className="text-xs text-zinc-400">{payload.company || <span className="text-red-400 italic">Unknown company</span>} • {[payload.city, payload.state].filter(Boolean).join(', ') || <span className="text-zinc-600 italic">No location</span>}</p>
                             {discoveredDate && <p className="text-[10px] text-zinc-600 mt-1">Discovered {discoveredDate}</p>}
@@ -1429,20 +1459,29 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
                         {isExpanded && (
                           <div className="border-t border-zinc-800 p-4 space-y-3 text-xs">
                             <div className="grid grid-cols-2 gap-3">
-                              {[
-                                { label: 'Apply URL', val: payload.apply_url },
-                                { label: 'Contact Email', val: payload.contact_email },
-                                { label: 'Pay', val: payload.pay_min || payload.pay_max ? `$${payload.pay_min || '?'}–$${payload.pay_max || '?'} ${payload.pay_type || ''}` : null },
-                                { label: 'Employment', val: payload.employment_type },
-                                { label: 'Source', val: job.source_url || payload.source_url },
-                              ].map(({ label, val }) => (
-                                <div key={label}>
-                                  <p className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest">{label}</p>
-                                  {val
-                                    ? <p className="text-zinc-300 font-mono break-all">{val.length > 60 ? <a href={val} target="_blank" rel="noreferrer" className="text-amber-400 hover:text-amber-300">{val.slice(0, 60)}…</a> : val}</p>
-                                    : <p className="text-red-400 italic">Missing</p>}
-                                </div>
-                              ))}
+                              {(() => {
+                                const applyUrl = payload.apply_url;
+                                const applyLabel = applyUrl
+                                  ? 'Apply URL'
+                                  : sourceUrl
+                                    ? `Apply via ${job.source_name || payload.source_name || 'Source'}`
+                                    : 'Apply URL';
+                                const applyVal = applyUrl || sourceUrl || null;
+                                return [
+                                  { label: applyLabel, val: applyVal, fallback: !applyUrl && !!sourceUrl },
+                                  { label: 'Contact Email', val: payload.contact_email },
+                                  { label: 'Pay', val: payload.pay_min || payload.pay_max ? `$${payload.pay_min || '?'}–$${payload.pay_max || '?'} ${payload.pay_type || ''}` : null },
+                                  { label: 'Employment', val: payload.employment_type },
+                                  { label: 'Source', val: sourceUrl },
+                                ].map(({ label, val, fallback }) => (
+                                  <div key={label}>
+                                    <p className={`text-[10px] font-bold uppercase tracking-widest ${fallback ? 'text-amber-600' : 'text-zinc-600'}`}>{label}{fallback ? ' (fallback)' : ''}</p>
+                                    {val
+                                      ? <p className="text-zinc-300 font-mono break-all">{val.length > 60 ? <a href={val} target="_blank" rel="noreferrer" className="text-amber-400 hover:text-amber-300">{val.slice(0, 60)}…</a> : val}</p>
+                                      : <p className="text-red-400 italic">Missing</p>}
+                                  </div>
+                                ));
+                              })()}
                             </div>
                             {payload.description && (
                               <div>

@@ -114,6 +114,10 @@ STEP 1 — Extract these fields from the real job content only:
 - source_url, source_name: where the listing came from
 - confidence: 0.0–1.0 — how confident this is a real active job post (not a template or example)
 
+CRITICAL — company and apply_url are required to publish this job. Extract them from every available signal:
+- company: check "About [Company]", employer name on job board, "posted by", email domain, copyright footer, or any brand name in the listing
+- apply_url: look for "Apply Now" / "Apply Here" links, ATS URLs (greenhouse.io, lever.co, workday.com, icims.com, bamboohr.com, ziprecruiter.com, indeed.com), or the canonical job page URL if no ATS link is found; do NOT leave empty if a URL exists on the page
+
 STEP 2 — Write the "description" field as SEO-optimized professional HTML.
 Use ONLY these tags: <h2> <p> <ul> <li> <strong>
 Do NOT use markdown, asterisks, hashes, or plain text. Every section must be valid HTML.

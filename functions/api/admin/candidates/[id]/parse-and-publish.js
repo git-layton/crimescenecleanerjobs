@@ -43,6 +43,7 @@ export async function onRequestPost({ request, env, params }) {
 
   const job = await insertJob(env, {
     ...parsed,
+    apply_url: parsed.apply_url || sourceUrl,
     source_type: 'import',
     source_url: sourceUrl,
     source_name: row.source_name,
