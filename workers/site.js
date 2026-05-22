@@ -33,7 +33,7 @@ async function health(request, env) {
     admin_configured: Boolean(env.ADMIN_TOKEN),
     edit_code_pepper_configured: Boolean(env.EDIT_CODE_PEPPER),
     email_configured: Boolean(env.RESEND_API_KEY && env.FROM_EMAIL),
-    openai_configured: Boolean(env.OPENAI_API_KEY),
+    ai_configured: Boolean(env.ANTHROPIC_API_KEY),
     google_search_configured: Boolean(env.GOOGLE_SEARCH_API_KEY && env.GOOGLE_SEARCH_CX),
     adzuna_configured: Boolean(env.ADZUNA_APP_ID && env.ADZUNA_APP_KEY),
     counts: null,

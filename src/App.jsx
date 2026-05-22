@@ -1588,6 +1588,84 @@ const JobDetailPage = ({ slug, onBack }) => {
   );
 };
 
+// --- WHY POST HERE PAGE ---
+const WhyPostHerePage = ({ onPostJob }) => {
+  const features = [
+    {
+      icon: <Search className="w-6 h-6 text-amber-500" />,
+      title: 'Your Own Google-Indexed Page',
+      body: 'Every listing gets a dedicated /jobs/slug URL that Google crawls within 24 hours. Your opening appears in Google Search, Google Jobs, and is submitted automatically to the Google Indexing API.',
+    },
+    {
+      icon: <Cpu className="w-6 h-6 text-amber-500" />,
+      title: 'AI-Optimized for the New Search',
+      body: 'Job descriptions are rewritten by Claude AI into structured, semantic HTML — optimized not just for Google, but for ChatGPT, Gemini, and Perplexity. When someone asks an AI "where can I find biohazard cleanup jobs?" your listing shows up.',
+    },
+    {
+      icon: <Target className="w-6 h-6 text-amber-500" />,
+      title: 'Zero Noise. Niche Audience.',
+      body: 'This board exists for one industry. Every visitor is a biohazard remediation or crime scene cleanup professional actively looking for work. No irrelevant applications from people who didn\'t read the posting.',
+    },
+    {
+      icon: <ShieldCheck className="w-6 h-6 text-amber-500" />,
+      title: 'Edit Anytime. No Account Needed.',
+      body: 'You get a private edit code after posting. Update your listing, change contact info, or take it down — anytime, from any device. No account, no password, no support ticket.',
+    },
+    {
+      icon: <Clock className="w-6 h-6 text-amber-500" />,
+      title: '45-Day Active Listing',
+      body: 'Your job stays live and indexed for 45 days. Re-post anytime if the role isn\'t filled. Listings that stay active longer rank higher in search over time.',
+    },
+    {
+      icon: <Briefcase className="w-6 h-6 text-amber-500" />,
+      title: 'Structured Data for Job Boards',
+      body: 'Every listing includes JSON-LD schema markup — the structured data Google requires to surface jobs in the dedicated Jobs carousel. IndeedBot, LinkedInBot, and ZipRecruiter crawlers can index it too.',
+    },
+  ];
+
+  return (
+    <div className="max-w-4xl mx-auto mt-8 pb-24">
+      <div className="mb-12">
+        <span className="inline-block py-1 px-3 rounded-full bg-zinc-900 border border-zinc-800 text-amber-500 text-xs font-bold tracking-widest uppercase mb-4">For Employers</span>
+        <h1 className="text-4xl md:text-5xl font-black uppercase tracking-tighter text-zinc-100 leading-[1.1] mb-6">
+          Reach the Only Professionals<br />
+          <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-yellow-600">Who Actually Do This Work</span>
+        </h1>
+        <p className="text-lg text-zinc-400 max-w-2xl leading-relaxed font-mono mb-8">
+          Hiring a biohazard remediation tech isn't like hiring a general laborer. You need someone certified, experienced, and serious. This is the only job board built for them.
+        </p>
+        <button
+          onClick={onPostJob}
+          className="inline-flex items-center gap-3 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-black uppercase tracking-wide py-4 px-8 rounded-lg text-sm transition-colors"
+        >
+          <PlusCircle className="w-5 h-5" /> Post a Job
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 mb-16">
+        {features.map(({ icon, title, body }) => (
+          <div key={title} className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 hover:border-amber-500/30 transition-colors">
+            <div className="mb-4">{icon}</div>
+            <h3 className="text-base font-bold text-zinc-100 mb-3">{title}</h3>
+            <p className="text-sm text-zinc-400 leading-relaxed">{body}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8 md:p-12 text-center">
+        <h2 className="text-2xl md:text-3xl font-black uppercase tracking-tighter text-zinc-100 mb-4">Ready to Find Your Next Technician?</h2>
+        <p className="text-zinc-400 font-mono mb-8 max-w-lg mx-auto">Post in under 2 minutes. AI handles the formatting. Your listing is live and indexed same day.</p>
+        <button
+          onClick={onPostJob}
+          className="inline-flex items-center gap-3 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-black uppercase tracking-wide py-4 px-10 rounded-lg text-sm transition-colors"
+        >
+          <PlusCircle className="w-5 h-5" /> Post a Job Now
+        </button>
+      </div>
+    </div>
+  );
+};
+
 // --- MAIN APP ---
 export default function App() {
   const urlParams = useMemo(() => new URLSearchParams(window.location.search), []);
@@ -1601,6 +1679,7 @@ export default function App() {
     if (urlParams.get('edit')) return 'edit';
     if (window.location.pathname === '/post-success') return 'submitting';
     if (/^\/jobs\/[^/]+$/.test(window.location.pathname)) return 'job-detail';
+    if (window.location.pathname === '/why-post-here') return 'why-post-here';
     return 'home';
   });
   const [showFilters, setShowFilters] = useState(false);
@@ -1769,7 +1848,14 @@ export default function App() {
               </span>
             </a>
             <div className="flex items-center gap-2">
-<button
+              <a
+                href="/why-post-here"
+                onClick={e => { e.preventDefault(); window.history.pushState({}, '', '/why-post-here'); setCurrentView('why-post-here'); }}
+                className="hidden md:block text-zinc-400 hover:text-zinc-100 px-3 py-2 text-xs font-bold uppercase tracking-wide transition"
+              >
+                Why Post Here?
+              </a>
+              <button
                 onClick={() => setCurrentView('post')}
                 className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-100 px-4 sm:px-5 py-2 rounded font-bold text-sm uppercase tracking-wide transition flex items-center"
               >
@@ -1855,6 +1941,8 @@ export default function App() {
               Back to Home
             </button>
           </div>
+        ) : currentView === 'why-post-here' ? (
+          <WhyPostHerePage onPostJob={() => { window.history.pushState({}, '', '/'); setCurrentView('post'); }} />
         ) : currentView === 'job-detail' ? (
           <JobDetailPage slug={jobDetailSlug} onBack={() => { window.history.pushState({}, '', '/'); setCurrentView('home'); }} />
         ) : currentView === 'post' ? (
