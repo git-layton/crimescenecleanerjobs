@@ -73,37 +73,37 @@ async function discoverWithAdzuna(env, query, location) {
   }));
 }
 
-async function discoverWithIndeed(env, query, location) {
-  const q = encodeURIComponent(query);
-  const l = location && location.toLowerCase() !== 'nationwide' ? encodeURIComponent(location) : '';
-  const url = `https://www.indeed.com/rss?q=${q}&l=${l}&sort=date&fromage=30`;
+async function discoverWithBrave(env, query, location) {
+  if (!env.BRAVE_SEARCH_API_KEY) return [];
+  const searchQuery = location && location.toLowerCase() !== 'nationwide'
+    ? `${query} ${location} jobs hiring`
+    : `${query} jobs hiring`;
+  const url = new URL('https://api.search.brave.com/res/v1/web/search');
+  url.searchParams.set('q', searchQuery);
+  url.searchParams.set('count', '10');
+  url.searchParams.set('search_lang', 'en');
+  url.searchParams.set('safesearch', 'off');
+
   const response = await fetch(url, {
-    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; JobBot/1.0)' },
+    headers: {
+      'Accept': 'application/json',
+      'Accept-Encoding': 'gzip',
+      'X-Subscription-Token': env.BRAVE_SEARCH_API_KEY,
+    },
   });
-  if (!response.ok) return [];
-  const xml = await response.text();
-  const items = [];
-  const itemRe = /<item>([\s\S]*?)<\/item>/g;
-  let m;
-  while ((m = itemRe.exec(xml)) !== null) {
-    const block = m[1];
-    const get = (tag) => { const t = new RegExp(`<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/${tag}>|<${tag}[^>]*>([^<]*)<\\/${tag}>`).exec(block); return t ? (t[1] || t[2] || '').trim() : ''; };
-    const link = get('link') || get('guid');
-    if (!link || !link.startsWith('http')) continue;
-    items.push({
-      source_name: 'Indeed',
-      source_url: link,
-      title: get('title'),
-      company: get('source'),
-      snippet: get('description').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 800),
-    });
-  }
-  return items;
+  if (!response.ok) throw new Error(`Brave search failed: ${response.status}`);
+  const payload = await response.json();
+  return (payload.web?.results || []).map(item => ({
+    source_name: 'Brave Search',
+    source_url: item.url,
+    title: item.title,
+    snippet: item.description || '',
+  }));
 }
 
 async function discoverJobs(env, query, location) {
   const providerResults = await Promise.allSettled([
-    discoverWithIndeed(env, query, location),
+    discoverWithBrave(env, query, location),
     discoverWithGoogle(env, query, location),
     discoverWithAdzuna(env, query, location),
   ]);
