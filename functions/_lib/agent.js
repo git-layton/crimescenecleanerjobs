@@ -176,12 +176,27 @@ export async function runDailyImport(env, options = {}) {
   const allCandidates = [];
   const runId = await createRun(env, queries.join('; '), location);
 
+  // Build set of already-seen URLs so we skip duplicates without burning AI calls.
+  // Jobs table: any time. Candidates: last 30 days (older ones may have expired or been cleaned up).
+  const seenUrls = new Set();
+  try {
+    const cutoff = new Date(Date.now() - 30 * 86400000).toISOString();
+    const [jobRows, candidateRows] = await Promise.all([
+      env.DB.prepare('SELECT source_url FROM jobs WHERE source_url IS NOT NULL AND source_url != ""').all(),
+      env.DB.prepare('SELECT source_url FROM job_import_candidates WHERE discovered_at >= ?').bind(cutoff).all(),
+    ]);
+    for (const r of jobRows.results || []) seenUrls.add(r.source_url);
+    for (const r of candidateRows.results || []) seenUrls.add(r.source_url);
+  } catch (_) { /* non-fatal — proceed without dedup */ }
+
   try {
     for (const query of queries) {
       const discovered = await discoverJobs(env, query, location);
       summary.discovered += discovered.length;
 
       for (const item of discovered) {
+        if (seenUrls.has(item.source_url)) { summary.skipped += 1; continue; }
+        seenUrls.add(item.source_url);
         try {
           const sourceText = env.FETCH_SOURCE_PAGES === 'true'
             ? await fetchSourceText(item.source_url)

@@ -545,10 +545,11 @@ export function rowToCandidate(row) {
   };
 }
 
-export async function listCandidates(env, status = 'pending', limit = 50) {
+export async function listCandidates(env, status = 'pending', limit = 50, ageDays = 30) {
+  const cutoff = new Date(Date.now() - ageDays * 86400000).toISOString();
   const result = await env.DB.prepare(
-    'SELECT * FROM job_import_candidates WHERE status = ? ORDER BY discovered_at DESC LIMIT ?'
-  ).bind(status, limit).all();
+    'SELECT * FROM job_import_candidates WHERE status = ? AND discovered_at >= ? ORDER BY discovered_at DESC LIMIT ?'
+  ).bind(status, cutoff, limit).all();
   return (result.results || []).map(rowToCandidate);
 }
 

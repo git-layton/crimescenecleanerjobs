@@ -9,6 +9,7 @@ import { onRequestGet as getSettings, onRequestPatch as updateSettings } from '.
 import { onRequestGet as getCandidates } from '../functions/api/admin/candidates/index.js';
 import { onRequestPost as approveCandidate } from '../functions/api/admin/candidates/[id]/approve.js';
 import { onRequestPost as rejectCandidate } from '../functions/api/admin/candidates/[id]/reject.js';
+import { onRequestPost as parseAndPublishCandidate } from '../functions/api/admin/candidates/[id]/parse-and-publish.js';
 import { onRequestPost as requestEditCode } from '../functions/api/edit-codes/request.js';
 import { onRequestPost as verifyEditCode } from '../functions/api/edit-codes/verify.js';
 import { onRequestPatch as updateWithEditCode } from '../functions/api/edit-codes/update.js';
@@ -153,6 +154,11 @@ async function routeRequest(request, env, ctx) {
   const candidateRejectMatch = pathname.match(/^\/api\/admin\/candidates\/([^/]+)\/reject$/);
   if (candidateRejectMatch && method === 'POST') {
     return run(rejectCandidate, request, env, ctx, { id: decodeURIComponent(candidateRejectMatch[1]) });
+  }
+
+  const candidateParsePublishMatch = pathname.match(/^\/api\/admin\/candidates\/([^/]+)\/parse-and-publish$/);
+  if (candidateParsePublishMatch && method === 'POST') {
+    return run(parseAndPublishCandidate, request, env, ctx, { id: decodeURIComponent(candidateParsePublishMatch[1]) });
   }
 
   if (pathname === '/api/admin/indexing' && method === 'POST') {

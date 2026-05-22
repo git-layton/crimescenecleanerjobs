@@ -74,6 +74,8 @@ const dbService = {
 
   rejectCandidate: async (id) => apiRequest(`/api/admin/candidates/${id}/reject`, { method: 'POST', admin: true }),
 
+  parseAndPublish: async (id) => apiRequest(`/api/admin/candidates/${id}/parse-and-publish`, { method: 'POST', admin: true }),
+
   requestEditCode: async (job, email) => apiRequest('/api/edit-codes/request', {
     method: 'POST',
     body: { job, email },
@@ -1195,6 +1197,19 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
     }
   };
 
+  const parseAndPublishJob = async (id) => {
+    setScrapedJobs(prev => prev.map(j => j.id === id ? { ...j, _parsing: true } : j));
+    try {
+      const result = await dbService.parseAndPublish(id);
+      setScrapedJobs(prev => prev.filter(j => j.id !== id));
+      await onRefresh?.();
+      onShowMessage('Parsed & Published', `"${result.job?.title}" is now live.`, 'info');
+    } catch (error) {
+      setScrapedJobs(prev => prev.map(j => j.id === id ? { ...j, _parsing: false } : j));
+      onShowMessage('Parse Failed', error.message, 'info');
+    }
+  };
+
   const updateLiveJobStatus = async (job, status) => {
     try {
       await dbService.updateJobStatus(job.id, status);
@@ -1379,6 +1394,7 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
                     if (!payload.apply_url && !payload.contact_email) missing.push('apply info');
                     if (!payload.description) missing.push('description');
                     const isExpanded = job._expanded;
+                    const discoveredDate = job.discovered_at ? new Date(job.discovered_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : null;
                     return (
                       <div key={job.id} className={`bg-zinc-950 border rounded-lg transition-colors ${isExpanded ? 'border-amber-500/40' : 'border-zinc-800 hover:border-amber-500/20'}`}>
                         <div className="p-4 flex items-start justify-between gap-3">
@@ -1392,10 +1408,21 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
                               {missing.length > 0 && <span className="text-[10px] text-red-400 font-mono">missing: {missing.join(', ')}</span>}
                             </div>
                             <p className="text-xs text-zinc-400">{payload.company || <span className="text-red-400 italic">Unknown company</span>} • {[payload.city, payload.state].filter(Boolean).join(', ') || <span className="text-zinc-600 italic">No location</span>}</p>
+                            {discoveredDate && <p className="text-[10px] text-zinc-600 mt-1">Discovered {discoveredDate}</p>}
                           </button>
                           <div className="flex gap-2 shrink-0">
                             <button onClick={() => rejectJob(job.id)} aria-label={`Reject ${payload.title}`} className="p-2 bg-zinc-900 hover:bg-red-500/20 text-zinc-500 hover:text-red-500 rounded border border-zinc-800"><X className="w-4 h-4" /></button>
-                            <button onClick={() => approveJob(job)} aria-label={`Approve ${payload.title}`} className="p-2 bg-zinc-900 hover:bg-green-500/20 text-zinc-500 hover:text-green-500 rounded border border-zinc-800"><Download className="w-4 h-4" /></button>
+                            <button onClick={() => approveJob(job)} aria-label={`Approve ${payload.title}`} title="Add to DB using current data" className="p-2 bg-zinc-900 hover:bg-green-500/20 text-zinc-500 hover:text-green-500 rounded border border-zinc-800"><Download className="w-4 h-4" /></button>
+                            <button
+                              onClick={() => parseAndPublishJob(job.id)}
+                              disabled={job._parsing}
+                              aria-label={`Parse full details and publish ${payload.title}`}
+                              title="Fetch source page, re-parse with AI, and publish"
+                              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 disabled:opacity-40 text-amber-400 hover:text-amber-300 rounded border border-amber-500/30 text-[11px] font-bold transition-colors"
+                            >
+                              <Wand2 className="w-3.5 h-3.5" />
+                              {job._parsing ? 'Parsing…' : 'Parse & Add'}
+                            </button>
                           </div>
                         </div>
 
