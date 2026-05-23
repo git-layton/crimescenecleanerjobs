@@ -202,27 +202,37 @@ export async function runDailyImport(env, options = {}) {
         if (seenUrls.has(item.source_url)) { summary.skipped += 1; continue; }
         seenUrls.add(item.source_url);
         try {
-          const sourceText = env.FETCH_SOURCE_PAGES === 'true'
-            ? await fetchSourceText(item.source_url)
-            : '';
           // Prior confidence by source: Adzuna provides structured job data (high prior),
           // Brave/Google return web pages that may or may not be job listings (low prior).
-          // The AI parser overrides this with its own assessment — prior only affects heuristic fallback.
           const priorConfidence = item.source_name === 'Adzuna' ? 0.75 : 0.40;
-          const parsed = await parseJobText(env, sourceText || item.snippet || item.title, {
+          const hints = {
             ...item,
             source_type: 'import',
             source_url: item.source_url,
             source_name: item.source_name,
             confidence: priorConfidence,
-          });
+          };
+
+          // Pass 1: parse from snippet/structured data (fast)
+          let parsed = await parseJobText(env, item.snippet || item.title || '', hints);
+          let sourceText = '';
+
+          // Pass 2: if still missing company or apply method, fetch the full source page
+          const hasCompany = parsed.company;
+          const hasApply = parsed.apply_url || parsed.contact_email;
+          if (!hasCompany || !hasApply) {
+            sourceText = await fetchSourceText(item.source_url);
+            if (sourceText) {
+              parsed = await parseJobText(env, sourceText, { ...hints, ...parsed });
+            }
+          }
 
           const payload = {
             ...parsed,
             source_type: 'import',
             source_url: item.source_url,
             source_name: item.source_name,
-            description: parsed.description || sourceText || item.snippet || '',
+            description: parsed.description || item.snippet || '',
           };
           const candidate = await insertCandidate(env, {
             run_id: runId,
@@ -237,8 +247,8 @@ export async function runDailyImport(env, options = {}) {
             allCandidates.push(candidate);
           }
 
-          const hasApply = payload.apply_url || payload.contact_email || payload.source_url;
-          const meetsRequirements = payload.company && hasApply;
+          const hasApplyForPublish = payload.apply_url || payload.contact_email || payload.source_url;
+          const meetsRequirements = payload.company && hasApplyForPublish;
           if (autoPublish && meetsRequirements && Number(payload.confidence || 0) >= publishThreshold) {
             await insertJob(env, { ...payload, status: 'active' }, { defaultStatus: 'active' });
             summary.published += 1;
