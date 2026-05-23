@@ -26,6 +26,9 @@ export async function onRequestPost({ request, env, params }) {
   const adminProblem = requireAdmin(request, env);
   if (adminProblem) return adminProblem;
 
+  const body = await request.json().catch(() => ({}));
+  const overrides = body.overrides || {};
+
   const row = await env.DB.prepare('SELECT * FROM job_import_candidates WHERE id = ? LIMIT 1').bind(params.id).first();
   if (!row) return problem(404, 'Candidate not found.');
 
@@ -34,16 +37,21 @@ export async function onRequestPost({ request, env, params }) {
   if (!sourceUrl) return problem(400, 'No source URL to fetch.');
 
   const sourceText = await fetchSourceText(sourceUrl);
-  const parsed = await parseJobText(env, sourceText || existingPayload.description || existingPayload.title || '', {
+  const hints = {
     source_url: sourceUrl,
     source_name: row.source_name,
     source_type: 'import',
     confidence: Number(row.confidence || 0),
-  });
+    // Admin overrides take priority over AI result
+    ...overrides,
+  };
+  const parsed = await parseJobText(env, sourceText || existingPayload.description || existingPayload.title || '', hints);
 
   const job = await insertJob(env, {
     ...parsed,
-    apply_url: parsed.apply_url || sourceUrl,
+    // Admin overrides win over everything
+    ...overrides,
+    apply_url: overrides.apply_url || parsed.apply_url || sourceUrl,
     source_type: 'import',
     source_url: sourceUrl,
     source_name: row.source_name,

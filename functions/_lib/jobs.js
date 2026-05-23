@@ -197,7 +197,7 @@ export function normalizeJobInput(input, options = {}) {
     description: cleanLong(input.description || input.content, 16000),
     apply_url: applyUrl || null,
     contact_email: contactEmail || null,
-    contact_phone: contactPhone || null,
+    contact_phone: contactPhone || '',
     owner_email: clean(input.owner_email, 320).toLowerCase() || contactEmail || null,
     source_url: clean(input.source_url, 1000) || null,
     source_name: clean(input.source_name, 120) || null,

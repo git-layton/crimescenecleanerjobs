@@ -11,12 +11,12 @@ export async function onRequestGet({ request, env }) {
 
   if (runId) {
     const rows = await env.DB.prepare(
-      `SELECT id, run_id, source_url, source_name, confidence, status, payload, discovered_at
+      `SELECT id, run_id, source_url, source_name, confidence, status, payload_json, discovered_at
        FROM job_import_candidates WHERE run_id = ? ORDER BY discovered_at DESC LIMIT 50`
     ).bind(runId).all();
     const candidates = (rows.results || []).map(r => ({
       ...r,
-      payload: r.payload ? JSON.parse(r.payload) : {},
+      payload: r.payload_json ? JSON.parse(r.payload_json) : {},
     }));
     return json({ candidates });
   }

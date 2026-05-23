@@ -77,7 +77,7 @@ const dbService = {
 
   rejectCandidate: async (id) => apiRequest(`/api/admin/candidates/${id}/reject`, { method: 'POST', admin: true }),
 
-  parseAndPublish: async (id) => apiRequest(`/api/admin/candidates/${id}/parse-and-publish`, { method: 'POST', admin: true }),
+  parseAndPublish: async (id, overrides = {}) => apiRequest(`/api/admin/candidates/${id}/parse-and-publish`, { method: 'POST', admin: true, body: { overrides } }),
 
   requestEditCode: async (job, email) => apiRequest('/api/edit-codes/request', {
     method: 'POST',
@@ -1071,6 +1071,7 @@ const AdminJobEditForm = ({ job, onSave }) => {
     title: job.title || '', company: job.company || '', company_url: job.company_url || '',
     city: job.city || '', state: job.state || '', postal_code: job.postal_code || '',
     apply_url: job.apply_url || '', contact_email: job.contact_email || '',
+    contact_phone: job.contact_phone || '',
     payrangemin: job.payrangemin || '', payrangemax: job.payrangemax || '',
     paytype: job.paytype || 'Hourly', category: job.category || 'Full-time',
     status: job.status || 'pending',
@@ -1106,6 +1107,10 @@ const AdminJobEditForm = ({ job, onSave }) => {
       <div>
         <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1">Contact Email</label>
         <input className={inputClass} value={data.contact_email} onChange={f('contact_email')} />
+      </div>
+      <div>
+        <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1">Contact Phone</label>
+        <input className={inputClass} value={data.contact_phone} onChange={f('contact_phone')} placeholder="(555) 000-0000" />
       </div>
       <div>
         <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1">Pay Min</label>
@@ -1289,10 +1294,10 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
     }
   };
 
-  const parseAndPublishJob = async (id) => {
+  const parseAndPublishJob = async (id, overrides = {}) => {
     setScrapedJobs(prev => prev.map(j => j.id === id ? { ...j, _parsing: true } : j));
     try {
-      const result = await dbService.parseAndPublish(id);
+      const result = await dbService.parseAndPublish(id, overrides);
       setScrapedJobs(prev => prev.filter(j => j.id !== id));
       await onRefresh?.();
       onShowMessage('Parsed & Published', `"${result.job?.title}" is now live.`, 'info');
@@ -1567,41 +1572,67 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
                           </button>
                           <div className="flex gap-2 shrink-0">
                             <button onClick={() => rejectJob(job.id)} className="p-2 bg-zinc-900 hover:bg-red-500/20 text-zinc-500 hover:text-red-500 rounded border border-zinc-800"><X className="w-4 h-4" /></button>
-                            <button onClick={() => parseAndPublishJob(job.id)} disabled={job._parsing} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 disabled:opacity-40 text-amber-400 hover:text-amber-300 rounded border border-amber-500/30 text-[11px] font-bold transition-colors">
+                            <button onClick={() => parseAndPublishJob(job.id, job._overrides || {})} disabled={job._parsing} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 disabled:opacity-40 text-amber-400 hover:text-amber-300 rounded border border-amber-500/30 text-[11px] font-bold transition-colors">
                               <Wand2 className="w-3.5 h-3.5" />{job._parsing ? 'Parsing…' : 'Add to Database'}
                             </button>
                           </div>
                         </div>
-                        {isExpanded && (
-                          <div className="border-t border-zinc-800 p-4 space-y-3 text-xs">
-                            <div className="grid grid-cols-2 gap-3">
-                              {(() => {
-                                const applyUrl = payload.apply_url;
-                                const applyLabel = applyUrl ? 'Apply URL' : sourceUrl ? `Apply via ${job.source_name || payload.source_name || 'Source'}` : 'Apply URL';
-                                const applyVal = applyUrl || sourceUrl || null;
-                                return [
-                                  { label: applyLabel, val: applyVal, fallback: !applyUrl && !!sourceUrl },
-                                  { label: 'Contact Email', val: payload.contact_email },
-                                  { label: 'Contact Phone', val: payload.contact_phone },
+                        {isExpanded && (() => {
+                          const ov = job._overrides || {};
+                          const setOv = (field, val) => setScrapedJobs(prev => prev.map(j => j.id === job.id ? { ...j, _overrides: { ...(j._overrides || {}), [field]: val } } : j));
+                          const inputCls = 'w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-zinc-200 text-xs font-mono focus:outline-none focus:border-amber-500/60 placeholder-zinc-600';
+                          const labelCls = 'text-[10px] font-bold uppercase tracking-widest text-zinc-600 mb-1 block';
+                          const ovLabelCls = 'text-[10px] font-bold uppercase tracking-widest text-amber-500 mb-1 block';
+                          return (
+                            <div className="border-t border-zinc-800 p-4 space-y-4 text-xs">
+                              <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">Override fields before publishing (optional)</p>
+                              <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                  <label className={ov.company !== undefined ? ovLabelCls : labelCls}>Company{ov.company !== undefined ? ' ✎' : ''}</label>
+                                  <input className={inputCls} placeholder={company || 'Unknown company'} value={ov.company !== undefined ? ov.company : ''} onChange={e => setOv('company', e.target.value)} />
+                                </div>
+                                <div>
+                                  <label className={ov.apply_url !== undefined ? ovLabelCls : labelCls}>Apply URL{ov.apply_url !== undefined ? ' ✎' : ''}</label>
+                                  <input className={inputCls} placeholder={payload.apply_url || sourceUrl || 'https://…'} value={ov.apply_url !== undefined ? ov.apply_url : ''} onChange={e => setOv('apply_url', e.target.value)} />
+                                </div>
+                                <div>
+                                  <label className={ov.contact_email !== undefined ? ovLabelCls : labelCls}>Contact Email{ov.contact_email !== undefined ? ' ✎' : ''}</label>
+                                  <input className={inputCls} placeholder={payload.contact_email || 'email@company.com'} value={ov.contact_email !== undefined ? ov.contact_email : ''} onChange={e => setOv('contact_email', e.target.value)} />
+                                </div>
+                                <div>
+                                  <label className={ov.contact_phone !== undefined ? ovLabelCls : labelCls}>Contact Phone{ov.contact_phone !== undefined ? ' ✎' : ''}</label>
+                                  <input className={inputCls} placeholder={payload.contact_phone || '(555) 000-0000'} value={ov.contact_phone !== undefined ? ov.contact_phone : ''} onChange={e => setOv('contact_phone', e.target.value)} />
+                                </div>
+                                <div>
+                                  <label className={ov.city !== undefined ? ovLabelCls : labelCls}>City{ov.city !== undefined ? ' ✎' : ''}</label>
+                                  <input className={inputCls} placeholder={city || 'City'} value={ov.city !== undefined ? ov.city : ''} onChange={e => setOv('city', e.target.value)} />
+                                </div>
+                                <div>
+                                  <label className={ov.state !== undefined ? ovLabelCls : labelCls}>State{ov.state !== undefined ? ' ✎' : ''}</label>
+                                  <input className={inputCls} placeholder={state || 'TX'} value={ov.state !== undefined ? ov.state : ''} onChange={e => setOv('state', e.target.value)} />
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-2 gap-3 pt-1 border-t border-zinc-800/60">
+                                {[
                                   { label: 'Pay', val: payload.pay_min || payload.pay_max ? `$${payload.pay_min || '?'}–$${payload.pay_max || '?'} ${payload.pay_type || ''}` : null },
                                   { label: 'Employment', val: payload.employment_type },
                                   { label: 'Source', val: sourceUrl },
-                                ].map(({ label, val, fallback }) => (
+                                ].map(({ label, val }) => (
                                   <div key={label}>
-                                    <p className={`text-[10px] font-bold uppercase tracking-widest ${fallback ? 'text-amber-600' : 'text-zinc-600'}`}>{label}{fallback ? ' (fallback)' : ''}</p>
-                                    {val ? <p className="text-zinc-300 font-mono break-all">{val.length > 60 ? <a href={val} target="_blank" rel="noreferrer" className="text-amber-400 hover:text-amber-300">{val.slice(0, 60)}…</a> : val}</p> : <p className="text-red-400 italic">Missing</p>}
+                                    <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-600">{label}</p>
+                                    {val ? <p className="text-zinc-400 font-mono break-all">{val.length > 60 ? <a href={val} target="_blank" rel="noreferrer" className="text-amber-400 hover:text-amber-300">{val.slice(0, 60)}…</a> : val}</p> : <p className="text-zinc-600 italic">—</p>}
                                   </div>
-                                ));
-                              })()}
-                            </div>
-                            {payload.description && (
-                              <div>
-                                <p className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest mb-1">Description preview</p>
-                                <div className="text-zinc-400 leading-relaxed max-h-40 overflow-y-auto prose-sm" dangerouslySetInnerHTML={{ __html: payload.description.slice(0, 600) + (payload.description.length > 600 ? '…' : '') }} />
+                                ))}
                               </div>
-                            )}
-                          </div>
-                        )}
+                              {payload.description && (
+                                <div>
+                                  <p className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest mb-1">Description preview</p>
+                                  <div className="text-zinc-400 leading-relaxed max-h-40 overflow-y-auto prose-sm" dangerouslySetInnerHTML={{ __html: payload.description.slice(0, 600) + (payload.description.length > 600 ? '…' : '') }} />
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </div>
                     );
                   })}
