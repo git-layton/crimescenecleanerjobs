@@ -108,13 +108,57 @@ function isSearchResultsPage(url) {
     const hasSearchQuery = u.searchParams.has('q') || u.searchParams.has('query')
       || u.searchParams.has('keyword') || u.searchParams.has('what')
       || u.searchParams.has('search') || u.searchParams.has('term');
-    // Search/listing pages: path contains /search or is just /jobs + has a query param
     if (hasSearchQuery && (path.includes('/search') || path === '/jobs' || path === '/jobs/')) return true;
-    // Bare /search path with any params
     if (path.endsWith('/search') || path.endsWith('/search/')) return true;
     return false;
   } catch {
     return false;
+  }
+}
+
+function looksLikeIndividualJob(url) {
+  try {
+    const u = new URL(url);
+    const path = u.pathname.toLowerCase();
+    if (path === '/' || path === '') return false;
+    // Skip obvious non-job pages
+    if (/\/(about|contact|login|signup|register|privacy|terms|blog|news|press|faq|help)\/?$/i.test(path)) return false;
+    // Strong job signals in path
+    if (/\/(job|jobs|career|careers|position|opening|vacancy|apply|listing)\/[^/]+/i.test(path)) return true;
+    // Indeed job key param
+    if (u.searchParams.has('jk') || u.searchParams.has('jobId') || u.searchParams.has('jobkey')) return true;
+    // Generic: at least two path segments with a slug that looks like a job title or ID
+    const segments = path.split('/').filter(Boolean);
+    return segments.length >= 2 && segments[segments.length - 1].length > 8;
+  } catch {
+    return false;
+  }
+}
+
+async function crawlForJobLinks(listingUrl, sourceName) {
+  try {
+    const response = await fetch(listingUrl, {
+      headers: {
+        'User-Agent': 'CrimeSceneCleanerJobsBot/1.0 (+https://crimescenecleanerjobs.com)',
+        'Accept': 'text/html,application/xhtml+xml',
+      },
+    });
+    if (!response.ok) return [];
+    const html = await response.text();
+
+    const found = new Set();
+    const hrefRe = /href="(https?:\/\/[^"#]{10,500})"/g;
+    let match;
+    while ((match = hrefRe.exec(html)) !== null) {
+      const link = match[1];
+      if (!isSearchResultsPage(link) && looksLikeIndividualJob(link)) {
+        found.add(link);
+        if (found.size >= 15) break; // cap per listing page
+      }
+    }
+    return [...found].map(url => ({ source_name: sourceName, source_url: url, title: '', snippet: '' }));
+  } catch {
+    return [];
   }
 }
 
@@ -212,12 +256,22 @@ export async function runDailyImport(env, options = {}) {
 
   try {
     for (const query of queries) {
-      const discovered = await discoverJobs(env, query, location);
+      const raw = await discoverJobs(env, query, location);
+
+      // Expand any search/listing pages into individual job links by crawling their HTML
+      const crawlResults = await Promise.allSettled(
+        raw.filter(item => isSearchResultsPage(item.source_url))
+           .map(item => crawlForJobLinks(item.source_url, item.source_name))
+      );
+      const crawled = crawlResults.flatMap(r => r.status === 'fulfilled' ? r.value : []);
+      const discovered = [
+        ...raw.filter(item => !isSearchResultsPage(item.source_url)),
+        ...crawled,
+      ];
       summary.discovered += discovered.length;
 
       for (const item of discovered) {
         if (seenUrls.has(item.source_url)) { summary.skipped += 1; continue; }
-        if (isSearchResultsPage(item.source_url)) { summary.skipped += 1; continue; }
         seenUrls.add(item.source_url);
         try {
           // Prior confidence by source: Adzuna provides structured job data (high prior),
