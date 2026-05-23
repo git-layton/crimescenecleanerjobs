@@ -164,7 +164,21 @@ Return ONLY a raw JSON object. No markdown, no code fences, no explanation.`,
   const raw = (payload.content?.[0]?.text || '')
     .replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
   const parsed = JSON.parse(raw || '{}');
-  return { ...fallback, ...parsed, confidence: Number(parsed.confidence ?? fallback.confidence) };
+  // Don't let Claude's empty strings clobber structured hint values (e.g. Adzuna company/location).
+  // Claude only wins on a field if it actually found something.
+  return {
+    ...fallback,
+    ...parsed,
+    title: parsed.title || fallback.title,
+    company: parsed.company || fallback.company,
+    city: parsed.city || fallback.city,
+    state: parsed.state || fallback.state,
+    apply_url: parsed.apply_url || fallback.apply_url,
+    contact_email: parsed.contact_email || fallback.contact_email,
+    pay_min: (parsed.pay_min !== undefined && parsed.pay_min !== '') ? parsed.pay_min : fallback.pay_min,
+    pay_max: (parsed.pay_max !== undefined && parsed.pay_max !== '') ? parsed.pay_max : fallback.pay_max,
+    confidence: Number(parsed.confidence ?? fallback.confidence),
+  };
 }
 
 export async function parseJobText(env, rawText, hints = {}) {

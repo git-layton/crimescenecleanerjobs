@@ -1408,16 +1408,22 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
                 </h3>
                 <div className="space-y-3">
                   {scrapedJobs.map(job => {
-                    const payload = job.payload || job;
+                    const payload = job.payload || {};
+                    // Prefer DB row fields (set from structured hints like Adzuna) over payload
+                    // which may have been emptied by Claude not finding them in the snippet text.
+                    const title = job.title || payload.title || '';
+                    const company = job.company || payload.company || '';
+                    const city = job.city || payload.city || '';
+                    const state = job.state || payload.state || '';
                     const confidence = Math.round(Number(job.confidence || payload.confidence || 0) * 100);
                     const sourceUrl = job.source_url || payload.source_url || '';
                     const hasApply = payload.apply_url || payload.contact_email || sourceUrl;
                     const missingBlocking = [];
-                    if (!payload.company) missingBlocking.push('company');
+                    if (!company) missingBlocking.push('company');
                     if (!hasApply) missingBlocking.push('apply link');
                     const missingOptional = [];
-                    if (!payload.title) missingOptional.push('title');
-                    if (!payload.city && !payload.state) missingOptional.push('location');
+                    if (!title) missingOptional.push('title');
+                    if (!city && !state) missingOptional.push('location');
                     if (!payload.description) missingOptional.push('description');
                     const isReady = missingBlocking.length === 0;
                     const isExpanded = job._expanded;
@@ -1430,14 +1436,14 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
                             className="flex-1 text-left min-w-0"
                           >
                             <div className="flex flex-wrap items-center gap-2 mb-1">
-                              <h4 className="text-sm font-bold text-zinc-100">{payload.title || <span className="text-red-400 italic">No title</span>}</h4>
+                              <h4 className="text-sm font-bold text-zinc-100">{title || <span className="text-red-400 italic">No title</span>}</h4>
                               <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${confidence >= 80 ? 'bg-green-500/15 text-green-400' : confidence >= 60 ? 'bg-amber-500/15 text-amber-400' : 'bg-red-500/15 text-red-400'}`}>{confidence}%</span>
                               <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${isReady ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'}`}>
                                 {isReady ? '✓ Ready' : `✗ ${missingBlocking.join(', ')}`}
                               </span>
                               {missingOptional.length > 0 && <span className="text-[10px] text-zinc-500 font-mono">missing: {missingOptional.join(', ')}</span>}
                             </div>
-                            <p className="text-xs text-zinc-400">{payload.company || <span className="text-red-400 italic">Unknown company</span>} • {[payload.city, payload.state].filter(Boolean).join(', ') || <span className="text-zinc-600 italic">No location</span>}</p>
+                            <p className="text-xs text-zinc-400">{company || <span className="text-red-400 italic">Unknown company</span>} • {[city, state].filter(Boolean).join(', ') || <span className="text-zinc-600 italic">No location</span>}</p>
                             {discoveredDate && <p className="text-[10px] text-zinc-600 mt-1">Discovered {discoveredDate}</p>}
                           </button>
                           <div className="flex gap-2 shrink-0">
