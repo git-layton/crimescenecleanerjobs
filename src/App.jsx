@@ -60,8 +60,8 @@ const dbService = {
     body: { query, location },
   }),
 
-  listCandidates: async () => {
-    const data = await apiRequest('/api/admin/candidates?status=pending', { admin: true });
+  listCandidates: async (ageDays = 1) => {
+    const data = await apiRequest(`/api/admin/candidates?status=pending&age_days=${ageDays}`, { admin: true });
     return data.candidates || [];
   },
 
@@ -1092,6 +1092,9 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
   const [autoPublish, setAutoPublish] = useState(false);
   const [autoPublishUntil, setAutoPublishUntil] = useState('');
   const [scanEnabled, setScanEnabled] = useState(true);
+  const [scanIntervalHours, setScanIntervalHours] = useState(24);
+  const [queueAgeDays, setQueueAgeDays] = useState(1);
+  const [showCustomQuery, setShowCustomQuery] = useState(false);
   const [scanQueries, setScanQueries] = useState([]);
   const [scanDefaultLocation, setScanDefaultLocation] = useState('Nationwide');
   const [newQuery, setNewQuery] = useState('');
@@ -1106,7 +1109,7 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
   useEffect(() => {
     let isMounted = true;
     Promise.all([
-      dbService.listCandidates(),
+      dbService.listCandidates(1),
       dbService.getScanHistory(),
       fetch('/api/health').then(r => r.json()),
       dbService.getSettings(),
@@ -1118,6 +1121,7 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
       setAutoPublish(settings?.auto_publish_jobs === 'true');
       setAutoPublishUntil(settings?.auto_publish_until || '');
       setScanEnabled(settings?.scan_enabled !== 'false');
+      setScanIntervalHours(Number(settings?.scan_interval_hours || health?.scan_interval_hours || 24));
       setScanDefaultLocation(settings?.scan_location || 'Nationwide');
       const raw = settings?.scan_queries || '';
       setScanQueries(raw.split(';').map(q => q.trim()).filter(Boolean));
@@ -1171,14 +1175,31 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
     await dbService.updateSettings({ scan_location: val }).catch(() => {});
   };
 
-  const runSourceScan = async () => {
+  const saveScanInterval = async (hours) => {
+    setScanIntervalHours(hours);
+    await dbService.updateSettings({ scan_interval_hours: String(hours) }).catch(() => {});
+  };
+
+  const reloadQueue = async (days) => {
+    const d = days ?? queueAgeDays;
+    const candidates = await dbService.listCandidates(d).catch(() => []);
+    setScrapedJobs(candidates);
+  };
+
+  const changeQueueAge = async (days) => {
+    setQueueAgeDays(days);
+    await reloadQueue(days);
+  };
+
+  const runSourceScan = async (customQuery, customLocation) => {
     setIsScanning(true);
     try {
-      const result = await dbService.scanJobs(scanQuery, scanLocation);
-      setScrapedJobs(result.candidates || []);
+      const result = await dbService.scanJobs(customQuery || undefined, customLocation || scanDefaultLocation);
       const history = await dbService.getScanHistory();
       setScanHistory(history.runs || []);
-      onShowMessage('Scan Complete', `${result.candidates?.length || 0} candidate listings queued for review.`, 'info');
+      const fresh = await dbService.listCandidates(queueAgeDays).catch(() => []);
+      setScrapedJobs(fresh);
+      onShowMessage('Scan Complete', `${result.candidates?.length || 0} new candidates queued for review.`, 'info');
     } catch (error) {
       onShowMessage('Scan Failed', error.message, 'info');
     } finally {
@@ -1281,136 +1302,177 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
 
       <div className="p-8 min-h-[500px]">
         {activeTab === 'aggregator' ? (
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-5 space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2">
-                    <Cpu className="w-3.5 h-3.5 text-amber-500" /> Scheduled Scan
-                  </h3>
-                  <button
-                    onClick={() => toggleScanEnabled(!scanEnabled)}
-                    aria-pressed={scanEnabled}
-                    aria-label={scanEnabled ? 'Disable scheduled scan' : 'Enable scheduled scan'}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${scanEnabled ? 'bg-amber-500' : 'bg-zinc-700'}`}
-                  >
-                    <span className={`inline-block h-4 w-4 transform rounded-full bg-zinc-100 transition-transform ${scanEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
-                  </button>
-                </div>
-                <div>
-                  <p className="text-xs text-zinc-400">Daily at <span className="text-zinc-100 font-mono">9:00 AM UTC</span> {!scanEnabled && <span className="text-red-400 font-bold">(disabled)</span>}</p>
-                  <p className="text-[10px] text-zinc-600 mt-1">Last run: {healthData?.last_scan_at ? new Date(healthData.last_scan_at).toLocaleString() : 'Never'}</p>
-                </div>
-                <div className="flex items-center justify-between pt-2 border-t border-zinc-800">
-                  <div>
-                    <p className="text-xs font-bold text-zinc-300">Auto-publish high confidence</p>
-                    <p className="text-[10px] text-zinc-600 mt-0.5">Publish jobs ≥92% confidence + company + apply link</p>
-                  </div>
-                  <button
-                    onClick={() => toggleAutoPublish(!autoPublish)}
-                    aria-pressed={autoPublish}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${autoPublish ? 'bg-amber-500' : 'bg-zinc-700'}`}
-                  >
-                    <span className={`inline-block h-4 w-4 transform rounded-full bg-zinc-100 transition-transform ${autoPublish ? 'translate-x-6' : 'translate-x-1'}`} />
-                  </button>
-                </div>
-                {autoPublish && (
-                  <div className="flex items-center justify-between pt-2">
-                    <div>
-                      <p className="text-xs text-zinc-400">Stop auto-publish after</p>
-                      <p className="text-[10px] text-zinc-600 mt-0.5">{autoPublishUntil ? `Expires ${new Date(autoPublishUntil).toLocaleDateString()}` : 'No end date'}</p>
+          <div className="space-y-5">
+            {/* Agent status banner */}
+            {(() => {
+              const lastRanAt = healthData?.scan_last_ran_at || healthData?.last_scan_at;
+              const intervalH = healthData?.scan_interval_hours || scanIntervalHours;
+              const nextMs = lastRanAt ? new Date(lastRanAt).getTime() + intervalH * 3600000 : null;
+              const nextIn = nextMs ? Math.max(0, Math.round((nextMs - Date.now()) / 60000)) : null;
+              const lastAgo = lastRanAt ? (() => {
+                const m = Math.round((Date.now() - new Date(lastRanAt).getTime()) / 60000);
+                return m < 60 ? `${m}m ago` : m < 1440 ? `${Math.round(m/60)}h ago` : `${Math.round(m/1440)}d ago`;
+              })() : null;
+              return (
+                <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-5 flex flex-wrap items-center gap-5">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${scanEnabled ? 'bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.6)]' : 'bg-zinc-600'}`} />
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-zinc-100">Job Scout Agent</p>
+                      <p className="text-[11px] text-zinc-500 mt-0.5">
+                        {scanEnabled ? `Scanning every ${intervalH}h` : <span className="text-red-400">Paused</span>}
+                        {lastAgo && <> · Last run <span className="text-zinc-300">{lastAgo}</span></>}
+                        {nextIn !== null && scanEnabled && <> · Next in <span className="text-zinc-300">{nextIn < 60 ? `${nextIn}m` : `${Math.round(nextIn/60)}h`}</span></>}
+                      </p>
                     </div>
-                    <input
-                      type="date"
-                      value={autoPublishUntil}
-                      onChange={e => setAutoPublishUntilDate(e.target.value)}
-                      className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-300 font-mono focus:border-amber-500 focus:outline-none"
-                    />
                   </div>
-                )}
-              </div>
+                  <div className="flex items-center gap-6 shrink-0">
+                    {[
+                      { label: 'Pending', val: scrapedJobs.length, color: scrapedJobs.length > 0 ? 'text-amber-400' : 'text-zinc-500' },
+                      { label: 'Live', val: healthData?.counts?.active ?? '—', color: 'text-green-400' },
+                      { label: 'Queries', val: scanQueries.length, color: 'text-zinc-400' },
+                    ].map(({ label, val, color }) => (
+                      <div key={label} className="text-center">
+                        <p className={`text-lg font-bold ${color}`}>{val}</p>
+                        <p className="text-[10px] text-zinc-600 uppercase tracking-widest">{label}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
 
-              <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-5">
-                <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-3">Manual Scan</h3>
-                <div className="flex gap-2 mb-3">
-                  <input type="text" value={scanQuery} onChange={e => setScanQuery(e.target.value)} placeholder="Keywords" className="flex-1 min-w-0 p-2 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 text-xs font-mono focus:border-amber-500 focus:outline-none" />
+            {/* Run scan CTA */}
+            <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-5 space-y-3">
+              <button
+                onClick={() => runSourceScan()}
+                disabled={isScanning}
+                className="w-full bg-amber-500 hover:bg-amber-400 disabled:bg-zinc-800 text-zinc-950 disabled:text-zinc-500 font-bold uppercase tracking-wide py-3 px-4 rounded-lg text-sm flex items-center justify-center gap-2 transition-colors"
+              >
+                {isScanning
+                  ? <><Activity className="w-4 h-4 animate-spin" /> Scanning all {scanQueries.length} queries…</>
+                  : <><Radar className="w-4 h-4" /> Run All {scanQueries.length} Queries Now</>}
+              </button>
+              <button
+                onClick={() => setShowCustomQuery(v => !v)}
+                className="w-full text-[11px] text-zinc-500 hover:text-zinc-300 uppercase tracking-widest transition-colors flex items-center justify-center gap-1"
+              >
+                <PlusCircle className="w-3 h-3" /> {showCustomQuery ? 'Hide' : 'Run a custom one-off query'}
+              </button>
+              {showCustomQuery && (
+                <div className="flex gap-2 pt-1">
+                  <input type="text" value={scanQuery} onChange={e => setScanQuery(e.target.value)} placeholder="Custom keywords…" className="flex-1 min-w-0 p-2 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 text-xs font-mono focus:border-amber-500 focus:outline-none" />
                   <input type="text" value={scanLocation} onChange={e => setScanLocation(e.target.value)} placeholder="Location" className="w-28 p-2 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 text-xs font-mono focus:border-amber-500 focus:outline-none" />
+                  <button onClick={() => runSourceScan(scanQuery, scanLocation)} disabled={isScanning || !scanQuery.trim()} className="bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-zinc-100 font-bold py-2 px-3 rounded text-xs">Go</button>
                 </div>
-                <button onClick={runSourceScan} disabled={isScanning} className="w-full bg-amber-500 hover:bg-amber-400 disabled:bg-zinc-800 text-zinc-950 disabled:text-zinc-500 font-bold uppercase tracking-wide py-2 px-4 rounded text-xs flex items-center justify-center gap-2">
-                  {isScanning ? <><Activity className="w-3.5 h-3.5 animate-spin" /> Scanning...</> : <><Radar className="w-3.5 h-3.5" /> Run Scan Now</>}
-                </button>
-              </div>
+              )}
             </div>
 
-            <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-5">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Daily Scan Queries</h3>
+            {/* Schedule + Queries side-by-side */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Schedule card */}
+              <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-5 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2"><Cpu className="w-3.5 h-3.5 text-amber-500" /> Schedule</h3>
+                  <button onClick={() => toggleScanEnabled(!scanEnabled)} aria-pressed={scanEnabled} className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${scanEnabled ? 'bg-amber-500' : 'bg-zinc-700'}`}>
+                    <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-zinc-100 transition-transform ${scanEnabled ? 'translate-x-4.5' : 'translate-x-0.5'}`} />
+                  </button>
+                </div>
                 <div className="flex items-center gap-2">
-                  <label className="text-[10px] text-zinc-500 uppercase tracking-widest">Default location</label>
-                  <input
-                    type="text"
-                    value={scanDefaultLocation}
-                    onChange={e => setScanDefaultLocation(e.target.value)}
-                    onBlur={e => saveLocation(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && saveLocation(e.target.value)}
-                    className="w-32 p-1.5 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 text-xs font-mono focus:border-amber-500 focus:outline-none"
-                  />
+                  <span className="text-xs text-zinc-400 shrink-0">Every</span>
+                  <select
+                    value={scanIntervalHours}
+                    onChange={e => saveScanInterval(Number(e.target.value))}
+                    className="flex-1 bg-zinc-900 border border-zinc-800 rounded px-2 py-1.5 text-xs text-zinc-100 font-mono focus:border-amber-500 focus:outline-none"
+                  >
+                    <option value={6}>6 hours</option>
+                    <option value={12}>12 hours</option>
+                    <option value={24}>24 hours (daily)</option>
+                    <option value={48}>48 hours</option>
+                    <option value={168}>1 week</option>
+                  </select>
+                </div>
+                <div className="pt-2 border-t border-zinc-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-bold text-zinc-300">Auto-publish</p>
+                      <p className="text-[10px] text-zinc-600 mt-0.5">≥92% confidence + company + apply link</p>
+                    </div>
+                    <button onClick={() => toggleAutoPublish(!autoPublish)} aria-pressed={autoPublish} className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${autoPublish ? 'bg-amber-500' : 'bg-zinc-700'}`}>
+                      <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-zinc-100 transition-transform ${autoPublish ? 'translate-x-4.5' : 'translate-x-0.5'}`} />
+                    </button>
+                  </div>
+                  {autoPublish && (
+                    <div className="flex items-center justify-between">
+                      <p className="text-[11px] text-zinc-500">Expires</p>
+                      <input type="date" value={autoPublishUntil} onChange={e => setAutoPublishUntilDate(e.target.value)} className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-300 font-mono focus:border-amber-500 focus:outline-none" />
+                    </div>
+                  )}
                 </div>
               </div>
-              <div className="space-y-2 mb-3">
-                {scanQueries.length === 0 && (
-                  <p className="text-zinc-600 text-xs font-mono">No queries configured. Add one below.</p>
-                )}
-                {scanQueries.map((q, idx) => (
-                  <div key={idx} className="flex items-center gap-2">
-                    {editingQueryIdx === idx ? (
-                      <>
-                        <input
-                          autoFocus
-                          type="text"
-                          value={editingQueryVal}
-                          onChange={e => setEditingQueryVal(e.target.value)}
-                          onKeyDown={e => { if (e.key === 'Enter') saveEditedQuery(idx); if (e.key === 'Escape') setEditingQueryIdx(null); }}
-                          className="flex-1 p-1.5 bg-zinc-900 border border-amber-500 rounded text-zinc-100 text-xs font-mono focus:outline-none"
-                        />
-                        <button onClick={() => saveEditedQuery(idx)} className="text-[10px] font-bold text-amber-400 hover:text-amber-300 uppercase tracking-widest shrink-0">Save</button>
-                        <button onClick={() => setEditingQueryIdx(null)} className="text-[10px] text-zinc-600 hover:text-zinc-400 uppercase tracking-widest shrink-0">Cancel</button>
-                      </>
-                    ) : (
-                      <>
-                        <span className="flex-1 text-xs text-zinc-300 font-mono bg-zinc-900 border border-zinc-800 rounded px-3 py-1.5">{q}</span>
-                        <button onClick={() => { setEditingQueryIdx(idx); setEditingQueryVal(q); }} className="text-[10px] text-zinc-500 hover:text-amber-400 uppercase tracking-widest shrink-0">Edit</button>
-                        <button onClick={() => removeQuery(idx)} className="text-zinc-600 hover:text-red-500 transition-colors shrink-0"><X className="w-3.5 h-3.5" /></button>
-                      </>
-                    )}
+
+              {/* Queries card */}
+              <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Search Queries</h3>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-zinc-600">Location</span>
+                    <input type="text" value={scanDefaultLocation} onChange={e => setScanDefaultLocation(e.target.value)} onBlur={e => saveLocation(e.target.value)} onKeyDown={e => e.key === 'Enter' && saveLocation(e.target.value)} className="w-24 p-1 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 text-xs font-mono focus:border-amber-500 focus:outline-none" />
                   </div>
-                ))}
-              </div>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={newQuery}
-                  onChange={e => setNewQuery(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && addQuery()}
-                  placeholder="Add a search query..."
-                  className="flex-1 p-2 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 text-xs font-mono focus:border-amber-500 focus:outline-none placeholder-zinc-600"
-                />
-                <button onClick={addQuery} disabled={!newQuery.trim()} className="bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-zinc-100 font-bold uppercase tracking-wide py-2 px-4 rounded text-xs flex items-center gap-1.5">
-                  <PlusCircle className="w-3.5 h-3.5" /> Add
-                </button>
+                </div>
+                <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                  {scanQueries.length === 0 && <p className="text-zinc-600 text-xs font-mono">No queries yet.</p>}
+                  {scanQueries.map((q, idx) => (
+                    <div key={idx} className="flex items-center gap-1.5">
+                      {editingQueryIdx === idx ? (
+                        <>
+                          <input autoFocus type="text" value={editingQueryVal} onChange={e => setEditingQueryVal(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') saveEditedQuery(idx); if (e.key === 'Escape') setEditingQueryIdx(null); }} className="flex-1 p-1 bg-zinc-900 border border-amber-500 rounded text-zinc-100 text-xs font-mono focus:outline-none" />
+                          <button onClick={() => saveEditedQuery(idx)} className="text-[10px] text-amber-400 font-bold uppercase">Save</button>
+                          <button onClick={() => setEditingQueryIdx(null)} className="text-[10px] text-zinc-600 uppercase">✕</button>
+                        </>
+                      ) : (
+                        <>
+                          <span className="flex-1 text-xs text-zinc-300 font-mono bg-zinc-900 border border-zinc-800 rounded px-2 py-1 truncate">{q}</span>
+                          <button onClick={() => { setEditingQueryIdx(idx); setEditingQueryVal(q); }} className="text-[10px] text-zinc-500 hover:text-amber-400 shrink-0">Edit</button>
+                          <button onClick={() => removeQuery(idx)} className="text-zinc-600 hover:text-red-500 shrink-0"><X className="w-3 h-3" /></button>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-1.5 pt-1 border-t border-zinc-800">
+                  <input type="text" value={newQuery} onChange={e => setNewQuery(e.target.value)} onKeyDown={e => e.key === 'Enter' && addQuery()} placeholder="Add query…" className="flex-1 p-1.5 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 text-xs font-mono focus:border-amber-500 focus:outline-none placeholder-zinc-600" />
+                  <button onClick={addQuery} disabled={!newQuery.trim()} className="bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-zinc-100 font-bold py-1.5 px-3 rounded text-xs flex items-center gap-1"><PlusCircle className="w-3 h-3" /> Add</button>
+                </div>
               </div>
             </div>
 
-            {scrapedJobs.length > 0 && (
-              <div>
-                <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-3 border-t border-zinc-800 pt-4">
-                  Pending Review ({scrapedJobs.length})
+            {/* Pending review queue */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
+                  Pending Review {scrapedJobs.length > 0 && <span className="text-amber-400">({scrapedJobs.length})</span>}
                 </h3>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-zinc-600 uppercase tracking-widest">Showing</span>
+                  <select
+                    value={queueAgeDays}
+                    onChange={e => changeQueueAge(Number(e.target.value))}
+                    className="bg-zinc-900 border border-zinc-800 rounded px-2 py-1 text-[11px] text-zinc-300 font-mono focus:border-amber-500 focus:outline-none"
+                  >
+                    <option value={1}>Last 24h</option>
+                    <option value={3}>Last 3 days</option>
+                    <option value={7}>Last 7 days</option>
+                    <option value={30}>Last 30 days</option>
+                  </select>
+                </div>
+              </div>
+              {scrapedJobs.length === 0
+                ? <p className="text-zinc-600 text-xs font-mono text-center py-8">No pending candidates in the selected time window. Run a scan or expand the date range.</p>
+                : (
                 <div className="space-y-3">
                   {scrapedJobs.map(job => {
                     const payload = job.payload || {};
-                    // Prefer DB row fields (set from structured hints like Adzuna) over payload
-                    // which may have been emptied by Claude not finding them in the snippet text.
                     const title = job.title || payload.title || '';
                     const company = job.company || payload.company || '';
                     const city = job.city || payload.city || '';
@@ -1431,46 +1493,29 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
                     return (
                       <div key={job.id} className={`bg-zinc-950 border rounded-lg transition-colors ${isExpanded ? 'border-amber-500/40' : 'border-zinc-800 hover:border-amber-500/20'}`}>
                         <div className="p-4 flex items-start justify-between gap-3">
-                          <button
-                            onClick={() => setScrapedJobs(prev => prev.map(j => j.id === job.id ? { ...j, _expanded: !j._expanded } : j))}
-                            className="flex-1 text-left min-w-0"
-                          >
+                          <button onClick={() => setScrapedJobs(prev => prev.map(j => j.id === job.id ? { ...j, _expanded: !j._expanded } : j))} className="flex-1 text-left min-w-0">
                             <div className="flex flex-wrap items-center gap-2 mb-1">
                               <h4 className="text-sm font-bold text-zinc-100">{title || <span className="text-red-400 italic">No title</span>}</h4>
                               <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${confidence >= 80 ? 'bg-green-500/15 text-green-400' : confidence >= 60 ? 'bg-amber-500/15 text-amber-400' : 'bg-red-500/15 text-red-400'}`}>{confidence}%</span>
-                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${isReady ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'}`}>
-                                {isReady ? '✓ Ready' : `✗ ${missingBlocking.join(', ')}`}
-                              </span>
+                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${isReady ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'}`}>{isReady ? '✓ Ready' : `✗ ${missingBlocking.join(', ')}`}</span>
                               {missingOptional.length > 0 && <span className="text-[10px] text-zinc-500 font-mono">missing: {missingOptional.join(', ')}</span>}
                             </div>
-                            <p className="text-xs text-zinc-400">{company || <span className="text-red-400 italic">Unknown company</span>} • {[city, state].filter(Boolean).join(', ') || <span className="text-zinc-600 italic">No location</span>}</p>
+                            <p className="text-xs text-zinc-400">{company || <span className="text-red-400 italic">Unknown company</span>} · {[city, state].filter(Boolean).join(', ') || <span className="text-zinc-600 italic">No location</span>}</p>
                             {discoveredDate && <p className="text-[10px] text-zinc-600 mt-1">Discovered {discoveredDate}</p>}
                           </button>
                           <div className="flex gap-2 shrink-0">
-                            <button onClick={() => rejectJob(job.id)} aria-label={`Reject ${payload.title}`} className="p-2 bg-zinc-900 hover:bg-red-500/20 text-zinc-500 hover:text-red-500 rounded border border-zinc-800"><X className="w-4 h-4" /></button>
-                            <button
-                              onClick={() => parseAndPublishJob(job.id)}
-                              disabled={job._parsing}
-                              aria-label={`Add ${payload.title} to database`}
-                              title="Fetch source page, AI-parse into SEO listing, and publish"
-                              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 disabled:opacity-40 text-amber-400 hover:text-amber-300 rounded border border-amber-500/30 text-[11px] font-bold transition-colors"
-                            >
-                              <Wand2 className="w-3.5 h-3.5" />
-                              {job._parsing ? 'Parsing…' : 'Add to Database'}
+                            <button onClick={() => rejectJob(job.id)} className="p-2 bg-zinc-900 hover:bg-red-500/20 text-zinc-500 hover:text-red-500 rounded border border-zinc-800"><X className="w-4 h-4" /></button>
+                            <button onClick={() => parseAndPublishJob(job.id)} disabled={job._parsing} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 disabled:opacity-40 text-amber-400 hover:text-amber-300 rounded border border-amber-500/30 text-[11px] font-bold transition-colors">
+                              <Wand2 className="w-3.5 h-3.5" />{job._parsing ? 'Parsing…' : 'Add to Database'}
                             </button>
                           </div>
                         </div>
-
                         {isExpanded && (
                           <div className="border-t border-zinc-800 p-4 space-y-3 text-xs">
                             <div className="grid grid-cols-2 gap-3">
                               {(() => {
                                 const applyUrl = payload.apply_url;
-                                const applyLabel = applyUrl
-                                  ? 'Apply URL'
-                                  : sourceUrl
-                                    ? `Apply via ${job.source_name || payload.source_name || 'Source'}`
-                                    : 'Apply URL';
+                                const applyLabel = applyUrl ? 'Apply URL' : sourceUrl ? `Apply via ${job.source_name || payload.source_name || 'Source'}` : 'Apply URL';
                                 const applyVal = applyUrl || sourceUrl || null;
                                 return [
                                   { label: applyLabel, val: applyVal, fallback: !applyUrl && !!sourceUrl },
@@ -1481,9 +1526,7 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
                                 ].map(({ label, val, fallback }) => (
                                   <div key={label}>
                                     <p className={`text-[10px] font-bold uppercase tracking-widest ${fallback ? 'text-amber-600' : 'text-zinc-600'}`}>{label}{fallback ? ' (fallback)' : ''}</p>
-                                    {val
-                                      ? <p className="text-zinc-300 font-mono break-all">{val.length > 60 ? <a href={val} target="_blank" rel="noreferrer" className="text-amber-400 hover:text-amber-300">{val.slice(0, 60)}…</a> : val}</p>
-                                      : <p className="text-red-400 italic">Missing</p>}
+                                    {val ? <p className="text-zinc-300 font-mono break-all">{val.length > 60 ? <a href={val} target="_blank" rel="noreferrer" className="text-amber-400 hover:text-amber-300">{val.slice(0, 60)}…</a> : val}</p> : <p className="text-red-400 italic">Missing</p>}
                                   </div>
                                 ));
                               })()}
@@ -1500,29 +1543,27 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
                     );
                   })}
                 </div>
-              </div>
-            )}
+              )}
+            </div>
 
+            {/* Scan history */}
             {scanHistory && scanHistory.length > 0 && (
               <div>
-                <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-3 border-t border-zinc-800 pt-4">Scan History</h3>
+                <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-3">Scan History</h3>
                 <div className="space-y-2">
                   {scanHistory.map(run => {
                     const isOpen = expandedRuns[run.id];
                     const candidates = runCandidates[run.id];
                     return (
                       <div key={run.id} className={`bg-zinc-950 border rounded-lg transition-colors ${isOpen ? 'border-zinc-700' : 'border-zinc-800'}`}>
-                        <button
-                          onClick={async () => {
-                            const nowOpen = !isOpen;
-                            setExpandedRuns(prev => ({ ...prev, [run.id]: nowOpen }));
-                            if (nowOpen && !candidates) {
-                              const rows = await dbService.getCandidatesByRun(run.id).catch(() => []);
-                              setRunCandidates(prev => ({ ...prev, [run.id]: rows }));
-                            }
-                          }}
-                          className="w-full px-4 py-3 flex items-center justify-between text-left"
-                        >
+                        <button onClick={async () => {
+                          const nowOpen = !isOpen;
+                          setExpandedRuns(prev => ({ ...prev, [run.id]: nowOpen }));
+                          if (nowOpen && !candidates) {
+                            const rows = await dbService.getCandidatesByRun(run.id).catch(() => []);
+                            setRunCandidates(prev => ({ ...prev, [run.id]: rows }));
+                          }
+                        }} className="w-full px-4 py-3 flex items-center justify-between text-left">
                           <div>
                             <p className="text-xs text-zinc-300 font-mono">{run.started_at ? new Date(run.started_at).toLocaleString() : '—'}</p>
                             <p className="text-[10px] text-zinc-600 mt-0.5 truncate max-w-xs">{run.query}</p>
@@ -1537,24 +1578,22 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
                         </button>
                         {isOpen && (
                           <div className="border-t border-zinc-800 p-3 space-y-2">
-                            {!candidates
-                              ? <p className="text-zinc-600 text-xs font-mono text-center py-2">Loading…</p>
-                              : candidates.length === 0
-                                ? <p className="text-zinc-600 text-xs font-mono text-center py-2">No candidates stored for this run.</p>
-                                : candidates.map(c => {
-                                  const p = c.payload || {};
-                                  const conf = Math.round(Number(c.confidence || 0) * 100);
-                                  const statusColor = { pending: 'text-amber-400', approved: 'text-green-400', rejected: 'text-zinc-600' }[c.status] || 'text-zinc-500';
-                                  return (
-                                    <div key={c.id} className="flex items-center gap-3 px-3 py-2 bg-zinc-900 rounded border border-zinc-800 text-xs">
-                                      <span className={`font-mono shrink-0 ${conf >= 80 ? 'text-green-400' : conf >= 60 ? 'text-amber-400' : 'text-red-400'}`}>{conf}%</span>
-                                      <span className="text-zinc-200 flex-1 truncate">{p.title || c.source_url || '—'}</span>
-                                      <span className="text-zinc-500 shrink-0">{p.company || ''}</span>
-                                      <span className={`font-bold uppercase shrink-0 ${statusColor}`}>{c.status}</span>
-                                      {c.source_url && <a href={c.source_url} target="_blank" rel="noreferrer" className="text-amber-500 hover:text-amber-400 shrink-0">↗</a>}
-                                    </div>
-                                  );
-                                })}
+                            {!candidates ? <p className="text-zinc-600 text-xs font-mono text-center py-2">Loading…</p>
+                              : candidates.length === 0 ? <p className="text-zinc-600 text-xs font-mono text-center py-2">No candidates stored for this run.</p>
+                              : candidates.map(c => {
+                                const p = c.payload || {};
+                                const conf = Math.round(Number(c.confidence || 0) * 100);
+                                const statusColor = { pending: 'text-amber-400', approved: 'text-green-400', rejected: 'text-zinc-600' }[c.status] || 'text-zinc-500';
+                                return (
+                                  <div key={c.id} className="flex items-center gap-3 px-3 py-2 bg-zinc-900 rounded border border-zinc-800 text-xs">
+                                    <span className={`font-mono shrink-0 ${conf >= 80 ? 'text-green-400' : conf >= 60 ? 'text-amber-400' : 'text-red-400'}`}>{conf}%</span>
+                                    <span className="text-zinc-200 flex-1 truncate">{p.title || c.source_url || '—'}</span>
+                                    <span className="text-zinc-500 shrink-0">{p.company || ''}</span>
+                                    <span className={`font-bold uppercase shrink-0 ${statusColor}`}>{c.status}</span>
+                                    {c.source_url && <a href={c.source_url} target="_blank" rel="noreferrer" className="text-amber-500 hover:text-amber-400 shrink-0">↗</a>}
+                                  </div>
+                                );
+                              })}
                           </div>
                         )}
                       </div>

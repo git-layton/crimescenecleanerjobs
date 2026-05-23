@@ -19,7 +19,7 @@ import { onRequestPost as requestIndexing } from '../functions/api/admin/indexin
 import { onRequestGet as getGoogleJobsFeed } from '../functions/api/google/jobs.json.js';
 import { onRequestGet as getSitemap } from '../functions/sitemap.xml.js';
 import { onRequestGet as getJobPage } from '../functions/jobs/[slug].js';
-import { runDailyImport } from '../functions/_lib/agent.js';
+import { runDailyImport, maybeRunScheduledScan } from '../functions/_lib/agent.js';
 
 const methodNotAllowed = () => new Response('Method not allowed', {
   status: 405,
@@ -44,12 +44,16 @@ async function health(request, env) {
 
   if (env.DB) {
     try {
-      const [countsResult, lastScan] = await Promise.all([
+      const [countsResult, lastScan, scheduleRows] = await Promise.all([
         env.DB.prepare("SELECT status, COUNT(*) AS count FROM jobs GROUP BY status ORDER BY status").all(),
         env.DB.prepare("SELECT finished_at FROM import_runs WHERE status = 'complete' ORDER BY finished_at DESC LIMIT 1").first(),
+        env.DB.prepare("SELECT key, value FROM site_settings WHERE key IN ('scan_interval_hours','scan_last_ran_at')").all(),
       ]);
       status.counts = Object.fromEntries((countsResult.results || []).map(row => [row.status, row.count]));
       status.last_scan_at = lastScan?.finished_at || null;
+      const scheduleMap = Object.fromEntries((scheduleRows.results || []).map(r => [r.key, r.value]));
+      status.scan_interval_hours = Number(scheduleMap.scan_interval_hours || 24);
+      status.scan_last_ran_at = scheduleMap.scan_last_ran_at || null;
     } catch (error) {
       status.ok = false;
       status.db_error = error.message;
@@ -210,10 +214,10 @@ export default {
     return routeRequest(request, env, ctx);
   },
   scheduled(event, env, ctx) {
-    if (event.cron === '0 9 * * *') {
-      ctx.waitUntil(runDailyImport(env, { trigger: 'cron' }).catch(err => console.error('Daily import error:', err)));
-    } else {
+    if (event.cron === '0 3 * * *') {
       ctx.waitUntil(archiveExpiredJobs(env));
+    } else {
+      ctx.waitUntil(maybeRunScheduledScan(env).catch(err => console.error('Scheduled scan error:', err)));
     }
   },
 };

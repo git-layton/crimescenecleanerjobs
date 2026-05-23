@@ -206,6 +206,25 @@ async function getSetting(env, key) {
   return row?.value ?? null;
 }
 
+export async function maybeRunScheduledScan(env) {
+  const enabled = await getSetting(env, 'scan_enabled');
+  if (enabled === 'false') return { skipped: true, reason: 'Scan disabled' };
+
+  const intervalHours = Number(await getSetting(env, 'scan_interval_hours') || 24);
+  const lastRanStr = await getSetting(env, 'scan_last_ran_at');
+  if (lastRanStr) {
+    const hoursSince = (Date.now() - new Date(lastRanStr).getTime()) / 3600000;
+    if (hoursSince < intervalHours) return { skipped: true, reason: `Next scan in ${Math.round(intervalHours - hoursSince)}h` };
+  }
+
+  const now = new Date().toISOString();
+  await env.DB.prepare(
+    "INSERT OR REPLACE INTO site_settings (key, value, updated_at) VALUES ('scan_last_ran_at', ?, ?)"
+  ).bind(now, now).run();
+
+  return runDailyImport(env, { trigger: 'cron' });
+}
+
 export async function runDailyImport(env, options = {}) {
   // For cron trigger, check if scanning is enabled
   if (options.trigger === 'cron') {

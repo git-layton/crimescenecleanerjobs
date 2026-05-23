@@ -21,10 +21,14 @@ export async function onRequestGet({ request, env }) {
     return json({ candidates });
   }
 
+  const ageDays = url.searchParams.has('age_days')
+    ? Math.min(Math.max(Number(url.searchParams.get('age_days')) || 1, 1), 365)
+    : 30;
   const candidates = await listCandidates(
     env,
     url.searchParams.get('status') || 'pending',
-    clampLimit(url.searchParams.get('limit'), 50, 200)
+    clampLimit(url.searchParams.get('limit'), 50, 200),
+    ageDays
   );
   return json({ candidates });
 }
