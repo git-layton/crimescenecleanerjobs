@@ -101,6 +101,23 @@ async function discoverWithBrave(env, query, location) {
   }));
 }
 
+function isSearchResultsPage(url) {
+  try {
+    const u = new URL(url);
+    const path = u.pathname.toLowerCase();
+    const hasSearchQuery = u.searchParams.has('q') || u.searchParams.has('query')
+      || u.searchParams.has('keyword') || u.searchParams.has('what')
+      || u.searchParams.has('search') || u.searchParams.has('term');
+    // Search/listing pages: path contains /search or is just /jobs + has a query param
+    if (hasSearchQuery && (path.includes('/search') || path === '/jobs' || path === '/jobs/')) return true;
+    // Bare /search path with any params
+    if (path.endsWith('/search') || path.endsWith('/search/')) return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 async function discoverJobs(env, query, location) {
   const providerResults = await Promise.allSettled([
     discoverWithBrave(env, query, location),
@@ -200,6 +217,7 @@ export async function runDailyImport(env, options = {}) {
 
       for (const item of discovered) {
         if (seenUrls.has(item.source_url)) { summary.skipped += 1; continue; }
+        if (isSearchResultsPage(item.source_url)) { summary.skipped += 1; continue; }
         seenUrls.add(item.source_url);
         try {
           // Prior confidence by source: Adzuna provides structured job data (high prior),
@@ -234,6 +252,10 @@ export async function runDailyImport(env, options = {}) {
             source_name: item.source_name,
             description: parsed.description || item.snippet || '',
           };
+
+          // Drop anything the AI itself rated as low-confidence — likely not a real job listing
+          if (Number(payload.confidence || 0) < 0.50) { summary.skipped += 1; continue; }
+
           const candidate = await insertCandidate(env, {
             run_id: runId,
             source_url: item.source_url,
