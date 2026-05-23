@@ -3,7 +3,7 @@ import {
   Clock, Briefcase, ChevronDown, ChevronUp,
   Search, PlusCircle, Building, Activity, TriangleAlert, Filter,
   Database, Radar, ShieldCheck, Download, Trash2, LogOut, Terminal, X,
-  Cpu, Target, Banknote, Navigation, ShieldAlert, Wand2
+  Cpu, Target, Banknote, Navigation, ShieldAlert, Wand2, Link as LinkIcon
 } from 'lucide-react';
 
 const ADMIN_TOKEN_KEY = 'csj_admin_token';
@@ -78,6 +78,8 @@ const dbService = {
   rejectCandidate: async (id) => apiRequest(`/api/admin/candidates/${id}/reject`, { method: 'POST', admin: true }),
 
   parseAndPublish: async (id, overrides = {}) => apiRequest(`/api/admin/candidates/${id}/parse-and-publish`, { method: 'POST', admin: true, body: { overrides } }),
+
+  importUrl: async (url) => apiRequest('/api/admin/candidates/import-url', { method: 'POST', admin: true, body: { url } }),
 
   requestEditCode: async (job, email) => apiRequest('/api/edit-codes/request', {
     method: 'POST',
@@ -496,11 +498,6 @@ const JobForm = ({ onSave, onDirectSave, onCancel, onShowMessage, onManage, init
   const [aiText, setAiText] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  const [promoCode, setPromoCode] = useState('');
-  const [showPromo, setShowPromo] = useState(false);
-  const [promoValid, setPromoValid] = useState(false);
-  const [promoChecking, setPromoChecking] = useState(false);
-  const [promoError, setPromoError] = useState('');
   const [parseKey, setParseKey] = useState(0);
   const [errors, setErrors] = useState({});
   const [step, setStep] = useState(mode === 'edit' ? 2 : 1);
@@ -570,60 +567,11 @@ const JobForm = ({ onSave, onDirectSave, onCancel, onShowMessage, onManage, init
     return e;
   };
 
-  const checkPromo = async (code) => {
-    const res = await fetch('/api/checkout/verify-promo', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code: code.trim() }),
-    });
-    if (!res.ok) throw new Error(`Server error ${res.status}`);
-    const data = await res.json();
-    return data.valid === true;
-  };
-
-  const handleApplyPromo = async () => {
-    if (!promoCode.trim()) return;
-    setPromoChecking(true);
-    setPromoError('');
-    setPromoValid(false);
-    try {
-      const valid = await checkPromo(promoCode);
-      if (valid) {
-        setPromoValid(true);
-      } else {
-        setPromoError('Invalid promo code.');
-      }
-    } catch (err) {
-      setPromoError(`Error: ${err.message}`);
-    } finally {
-      setPromoChecking(false);
-    }
-  };
-
   const handlePaymentAndSave = async () => {
     const errs = validate();
     if (Object.keys(errs).length) { setErrors(errs); return; }
     setIsProcessing(true);
     try {
-      if (promoCode.trim()) {
-        let valid = promoValid;
-        if (!valid) {
-          setPromoError('');
-          try {
-            valid = await checkPromo(promoCode);
-          } catch (err) {
-            setPromoError(`Error: ${err.message}`);
-            return;
-          }
-        }
-        if (valid) {
-          setPromoValid(true);
-          await onDirectSave({ ...formData, promo_code: promoCode, created: new Date().toISOString() });
-          return;
-        }
-        setPromoError('Invalid promo code.');
-        return;
-      }
       await onSave({ ...formData, created: new Date().toISOString() });
     } finally {
       setIsProcessing(false);
@@ -776,38 +724,6 @@ const JobForm = ({ onSave, onDirectSave, onCancel, onShowMessage, onManage, init
       </div>
 
       <div className="pt-6 border-t border-zinc-800">
-        {mode !== 'edit' && (
-          <div className="mb-4">
-            {!showPromo ? (
-              <button onClick={() => setShowPromo(true)} className="text-xs text-zinc-600 hover:text-zinc-400 transition-colors">Have a promo code?</button>
-            ) : (
-              <div className="flex flex-col gap-1.5">
-                {promoValid ? (
-                  <span className="text-green-400 text-sm font-mono font-bold">✓ Promo code applied — no payment required</span>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={promoCode}
-                      onChange={e => { setPromoCode(e.target.value); setPromoValid(false); setPromoError(''); }}
-                      onKeyDown={e => e.key === 'Enter' && handleApplyPromo()}
-                      placeholder="Enter promo code"
-                      className={`w-48 p-2 bg-zinc-950 border rounded text-zinc-300 text-sm focus:outline-none focus:border-amber-500 transition-colors ${promoError ? 'border-red-500' : 'border-zinc-700'}`}
-                    />
-                    <button
-                      onClick={handleApplyPromo}
-                      disabled={promoChecking || !promoCode.trim()}
-                      className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-zinc-300 text-sm rounded transition-colors"
-                    >
-                      {promoChecking ? 'Checking...' : 'Apply'}
-                    </button>
-                  </div>
-                )}
-                {promoError && <span className="text-red-400 text-xs font-mono">{promoError}</span>}
-              </div>
-            )}
-          </div>
-        )}
         {Object.keys(errors).length > 0 && (
           <p className="text-red-400 text-sm mb-4 font-mono">⚠ Please fill in the required fields highlighted above.</p>
         )}
@@ -1145,6 +1061,7 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
   const [eventStats, setEventStats] = useState(null);
   const [analyticsData, setAnalyticsData] = useState(null);
   const [isScanning, setIsScanning] = useState(false);
+  const [scanningLabel, setScanningLabel] = useState('');
   const [scrapedJobs, setScrapedJobs] = useState([]);
   const [scanQuery, setScanQuery] = useState('Crime Scene Cleanup');
   const [scanLocation, setScanLocation] = useState('Nationwide');
@@ -1156,6 +1073,8 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
   const [scanIntervalHours, setScanIntervalHours] = useState(24);
   const [queueAgeDays, setQueueAgeDays] = useState(1);
   const [showCustomQuery, setShowCustomQuery] = useState(false);
+  const [importUrl, setImportUrl] = useState('');
+  const [isImportingUrl, setIsImportingUrl] = useState(false);
   const [scanQueries, setScanQueries] = useState([]);
   const [scanDefaultLocation, setScanDefaultLocation] = useState('Nationwide');
   const [newQuery, setNewQuery] = useState('');
@@ -1260,6 +1179,7 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
 
   const runSourceScan = async (customQuery, customLocation) => {
     setIsScanning(true);
+    setScanningLabel(customQuery ? `"${customQuery}"` : `all ${scanQueries.length} queries`);
     try {
       const result = await dbService.scanJobs(customQuery || undefined, customLocation || scanDefaultLocation);
       const history = await dbService.getScanHistory();
@@ -1271,6 +1191,24 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
       onShowMessage('Scan Failed', error.message, 'info');
     } finally {
       setIsScanning(false);
+    }
+  };
+
+  const importJobUrl = async () => {
+    const url = importUrl.trim();
+    if (!url) return;
+    setIsImportingUrl(true);
+    try {
+      const result = await dbService.importUrl(url);
+      setImportUrl('');
+      setShowCustomQuery(false);
+      const fresh = await dbService.listCandidates(queueAgeDays).catch(() => []);
+      setScrapedJobs(fresh);
+      onShowMessage('Imported', `Added "${result.candidate?.payload?.title || url}" to the pending queue.`, 'info');
+    } catch (error) {
+      onShowMessage('Import Failed', error.message, 'info');
+    } finally {
+      setIsImportingUrl(false);
     }
   };
 
@@ -1368,6 +1306,14 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
       </div>
 
       <div className="p-8 min-h-[500px]">
+        {/* Persistent Add Listing button — visible on any tab */}
+        {onAddJob && (
+          <div className="flex justify-end mb-4">
+            <button onClick={onAddJob} className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold uppercase tracking-wide py-2 px-4 rounded text-xs shadow-md">
+              <PlusCircle className="w-4 h-4" /> Add Listing
+            </button>
+          </div>
+        )}
         {activeTab === 'aggregator' ? (
           <div className="space-y-5">
             {/* Agent status banner */}
@@ -1417,20 +1363,34 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
                 className="w-full bg-amber-500 hover:bg-amber-400 disabled:bg-zinc-800 text-zinc-950 disabled:text-zinc-500 font-bold uppercase tracking-wide py-3 px-4 rounded-lg text-sm flex items-center justify-center gap-2 transition-colors"
               >
                 {isScanning
-                  ? <><Activity className="w-4 h-4 animate-spin" /> Scanning all {scanQueries.length} queries…</>
+                  ? <><Activity className="w-4 h-4 animate-spin" /> Scanning {scanningLabel}…</>
                   : <><Radar className="w-4 h-4" /> Run All {scanQueries.length} Queries Now</>}
               </button>
-              <button
-                onClick={() => setShowCustomQuery(v => !v)}
-                className="w-full text-[11px] text-zinc-500 hover:text-zinc-300 uppercase tracking-widest transition-colors flex items-center justify-center gap-1"
-              >
-                <PlusCircle className="w-3 h-3" /> {showCustomQuery ? 'Hide' : 'Run a custom one-off query'}
-              </button>
-              {showCustomQuery && (
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowCustomQuery(v => !v)}
+                  className={`flex-1 text-[11px] uppercase tracking-widest transition-colors flex items-center justify-center gap-1 ${showCustomQuery === 'query' ? 'text-amber-400' : 'text-zinc-500 hover:text-zinc-300'}`}
+                >
+                  <Search className="w-3 h-3" /> {showCustomQuery === 'query' ? 'Hide' : 'Custom query'}
+                </button>
+                <button
+                  onClick={() => setShowCustomQuery(v => v === 'url' ? false : 'url')}
+                  className={`flex-1 text-[11px] uppercase tracking-widest transition-colors flex items-center justify-center gap-1 ${showCustomQuery === 'url' ? 'text-amber-400' : 'text-zinc-500 hover:text-zinc-300'}`}
+                >
+                  <LinkIcon className="w-3 h-3" /> {showCustomQuery === 'url' ? 'Hide' : 'Import from URL'}
+                </button>
+              </div>
+              {showCustomQuery === 'query' && (
                 <div className="flex gap-2 pt-1">
                   <input type="text" value={scanQuery} onChange={e => setScanQuery(e.target.value)} placeholder="Custom keywords…" className="flex-1 min-w-0 p-2 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 text-xs font-mono focus:border-amber-500 focus:outline-none" />
                   <input type="text" value={scanLocation} onChange={e => setScanLocation(e.target.value)} placeholder="Location" className="w-28 p-2 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 text-xs font-mono focus:border-amber-500 focus:outline-none" />
                   <button onClick={() => runSourceScan(scanQuery, scanLocation)} disabled={isScanning || !scanQuery.trim()} className="bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-zinc-100 font-bold py-2 px-3 rounded text-xs">Go</button>
+                </div>
+              )}
+              {showCustomQuery === 'url' && (
+                <div className="flex gap-2 pt-1">
+                  <input type="url" value={importUrl} onChange={e => setImportUrl(e.target.value)} placeholder="https://www.ziprecruiter.com/…" className="flex-1 min-w-0 p-2 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 text-xs font-mono focus:border-amber-500 focus:outline-none" onKeyDown={e => e.key === 'Enter' && importJobUrl()} />
+                  <button onClick={importJobUrl} disabled={isImportingUrl || !importUrl.trim()} className="bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-zinc-100 font-bold py-2 px-3 rounded text-xs whitespace-nowrap">{isImportingUrl ? 'Importing…' : 'Import'}</button>
                 </div>
               )}
             </div>
@@ -2291,6 +2251,13 @@ export default function App() {
     try {
       const result = await dbService.addJob(newJob, { publish: publish ?? isAdmin });
       const saved = result.job;
+      // Admins stay in the console — no redirect to the public "posted" page
+      if (isAdmin) {
+        await loadJobs(true);
+        setCurrentView('admin');
+        showMessage('Listing Added', `"${saved.title}" is live.`);
+        return;
+      }
       if (saved.status === 'active' && saved.slug) {
         dbService.logEvent('job_posted', { slug: saved.slug });
         setPostedJob({ slug: saved.slug, editCode: result.edit?.edit_code || '', emailed: result.edit?.emailed, emailError: result.edit?.email?.error || '' });
@@ -2447,7 +2414,7 @@ export default function App() {
         ) : currentView === 'job-detail' ? (
           <JobDetailPage slug={jobDetailSlug} onBack={() => { window.history.pushState({}, '', '/'); setCurrentView('home'); }} />
         ) : currentView === 'post' ? (
-          <JobForm onSave={handleAddJob} onDirectSave={handleAddJobDirect} onCancel={() => setCurrentView('home')} onShowMessage={showMessage} />
+          <JobForm onSave={handleAddJob} onDirectSave={handleAddJobDirect} onCancel={() => setCurrentView(isAdmin ? 'admin' : 'home')} onShowMessage={showMessage} />
         ) : currentView === 'edit' ? (
           <EditPostGateway
             initialJobKey={editTarget}

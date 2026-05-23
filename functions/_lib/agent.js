@@ -125,8 +125,11 @@ function looksLikeIndividualJob(url) {
     if (/\/(about|contact|login|signup|register|privacy|terms|blog|news|press|faq|help)\/?$/i.test(path)) return false;
     // Strong job signals in path
     if (/\/(job|jobs|career|careers|position|opening|vacancy|apply|listing)\/[^/]+/i.test(path)) return true;
-    // Indeed job key param
-    if (u.searchParams.has('jk') || u.searchParams.has('jobId') || u.searchParams.has('jobkey')) return true;
+    // ZipRecruiter: /c/Company/Job-Title?jid=... or ?jid= param
+    if (/^\/c\/[^/]+\/[^/]+/.test(path)) return true;
+    if (u.searchParams.has('jid')) return true;
+    // Indeed / USAJobs / generic ATS job key params
+    if (u.searchParams.has('jk') || u.searchParams.has('jobId') || u.searchParams.has('jobkey') || u.searchParams.has('JobID')) return true;
     // Generic: at least two path segments with a slug that looks like a job title or ID
     const segments = path.split('/').filter(Boolean);
     return segments.length >= 2 && segments[segments.length - 1].length > 8;
@@ -139,22 +142,28 @@ async function crawlForJobLinks(listingUrl, sourceName) {
   try {
     const response = await fetch(listingUrl, {
       headers: {
-        'User-Agent': 'CrimeSceneCleanerJobsBot/1.0 (+https://crimescenecleanerjobs.com)',
+        'User-Agent': 'Mozilla/5.0 (compatible; JobBoardBot/1.0; +https://crimescenecleanerjobs.com)',
         'Accept': 'text/html,application/xhtml+xml',
       },
     });
     if (!response.ok) return [];
     const html = await response.text();
+    const base = new URL(listingUrl);
 
     const found = new Set();
-    const hrefRe = /href="(https?:\/\/[^"#]{10,500})"/g;
+    // Match both absolute and relative URLs (job boards often use relative paths)
+    const hrefRe = /href=["']([^"'#\s]{5,500})["']/g;
     let match;
     while ((match = hrefRe.exec(html)) !== null) {
-      const link = match[1];
-      if (!isSearchResultsPage(link) && looksLikeIndividualJob(link)) {
-        found.add(link);
-        if (found.size >= 15) break; // cap per listing page
-      }
+      let link = match[1];
+      try {
+        // Resolve relative URLs against the page's origin
+        if (!link.startsWith('http')) link = new URL(link, base).href;
+        if (!isSearchResultsPage(link) && looksLikeIndividualJob(link)) {
+          found.add(link);
+          if (found.size >= 30) break; // was 15 — increased for better coverage
+        }
+      } catch { /* invalid URL, skip */ }
     }
     return [...found].map(url => ({ source_name: sourceName, source_url: url, title: '', snippet: '' }));
   } catch {
@@ -162,11 +171,29 @@ async function crawlForJobLinks(listingUrl, sourceName) {
   }
 }
 
+async function discoverWithZipRecruiter(env, query, location) {
+  const url = new URL('https://www.ziprecruiter.com/jobs-search');
+  url.searchParams.set('search', query);
+  if (location && location.toLowerCase() !== 'nationwide') url.searchParams.set('location', location);
+  url.searchParams.set('days', '14'); // last 2 weeks
+  return crawlForJobLinks(url.toString(), 'ZipRecruiter');
+}
+
+async function discoverWithIndeed(env, query, location) {
+  const url = new URL('https://www.indeed.com/jobs');
+  url.searchParams.set('q', query);
+  url.searchParams.set('l', location && location.toLowerCase() !== 'nationwide' ? location : 'United States');
+  url.searchParams.set('sort', 'date');
+  return crawlForJobLinks(url.toString(), 'Indeed');
+}
+
 async function discoverJobs(env, query, location) {
   const providerResults = await Promise.allSettled([
     discoverWithBrave(env, query, location),
     discoverWithGoogle(env, query, location),
     discoverWithAdzuna(env, query, location),
+    discoverWithZipRecruiter(env, query, location),
+    discoverWithIndeed(env, query, location),
   ]);
   const items = providerResults.flatMap(result => result.status === 'fulfilled' ? result.value : []);
   const seen = new Set();
@@ -326,8 +353,8 @@ export async function runDailyImport(env, options = {}) {
             description: parsed.description || item.snippet || '',
           };
 
-          // Drop anything the AI itself rated as low-confidence — likely not a real job listing
-          if (Number(payload.confidence || 0) < 0.50) { summary.skipped += 1; continue; }
+          // Drop anything the AI rated as very low confidence — likely not a real job listing at all
+          if (Number(payload.confidence || 0) < 0.35) { summary.skipped += 1; continue; }
 
           const candidate = await insertCandidate(env, {
             run_id: runId,

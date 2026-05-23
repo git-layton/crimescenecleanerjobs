@@ -10,6 +10,7 @@ import { onRequestGet as getCandidates } from '../functions/api/admin/candidates
 import { onRequestPost as approveCandidate } from '../functions/api/admin/candidates/[id]/approve.js';
 import { onRequestPost as rejectCandidate } from '../functions/api/admin/candidates/[id]/reject.js';
 import { onRequestPost as parseAndPublishCandidate } from '../functions/api/admin/candidates/[id]/parse-and-publish.js';
+import { onRequestPost as importUrlCandidate } from '../functions/api/admin/candidates/import-url.js';
 import { onRequestPost as requestEditCode } from '../functions/api/edit-codes/request.js';
 import { onRequestPost as verifyEditCode } from '../functions/api/edit-codes/verify.js';
 import { onRequestPatch as updateWithEditCode } from '../functions/api/edit-codes/update.js';
@@ -149,6 +150,10 @@ async function routeRequest(request, env, ctx) {
 
   if (pathname === '/api/admin/candidates' && method === 'GET') {
     return run(getCandidates, request, env, ctx);
+  }
+
+  if (pathname === '/api/admin/candidates/import-url' && method === 'POST') {
+    return run(importUrlCandidate, request, env, ctx);
   }
 
   const candidateApproveMatch = pathname.match(/^\/api\/admin\/candidates\/([^/]+)\/approve$/);

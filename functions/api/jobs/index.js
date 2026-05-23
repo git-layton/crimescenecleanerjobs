@@ -31,11 +31,8 @@ export async function onRequestPost({ request, env }) {
 
   const body = await readJson(request);
   const isAdmin = isAdminRequest(request, env);
-  const promoValid = body.promo_code && env.PROMO_CODE && body.promo_code === env.PROMO_CODE;
-  const requestedStatus = isAdmin && body.status === 'active' ? 'active'
-    : body.source_type === 'import' ? 'pending'
-    : promoValid ? 'active'
-    : 'pending';
+  // Admin submissions are always active; imports always start pending for review; public posts pending
+  const requestedStatus = isAdmin && body.source_type !== 'import' ? 'active' : 'pending';
 
   try {
     const siteUrl = getSiteUrl(env, request);

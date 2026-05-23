@@ -124,7 +124,7 @@ STEP 1 — Extract these fields from the real job content only:
 - contact_email: hiring contact email if present
 - contact_phone: hiring contact phone number if present (digits + formatting only, e.g. "555-867-5309")
 - source_url, source_name: where the listing came from
-- confidence: 0.0–1.0 — how confident this is a real active job post (not a template or example)
+- confidence: 0.0–1.0 — how confident this is a REAL, ACTIVE job post. Score 0.8–1.0 for clear job listings from real companies with title/company/location. Score 0.5–0.8 for posts missing some details but clearly a job. Score below 0.4 ONLY if the content is not a job post at all (article, template, example, spam). IMPORTANT: do NOT lower confidence because the job seems outside the biohazard niche — relevance filtering happens separately. An "evidence technician" or "forensic cleanup" post is just as valid as "biohazard remediation technician."
 
 CRITICAL — to publish this job we need company + at least one of: apply_url, contact_email, contact_phone.
 - company: check "About [Company]", employer name on job board, "posted by", email domain, copyright footer, or any brand name in the listing
