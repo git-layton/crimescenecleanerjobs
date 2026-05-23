@@ -1442,16 +1442,15 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
                           </button>
                           <div className="flex gap-2 shrink-0">
                             <button onClick={() => rejectJob(job.id)} aria-label={`Reject ${payload.title}`} className="p-2 bg-zinc-900 hover:bg-red-500/20 text-zinc-500 hover:text-red-500 rounded border border-zinc-800"><X className="w-4 h-4" /></button>
-                            <button onClick={() => approveJob(job)} aria-label={`Approve ${payload.title}`} title="Add to DB using current data" className="p-2 bg-zinc-900 hover:bg-green-500/20 text-zinc-500 hover:text-green-500 rounded border border-zinc-800"><Download className="w-4 h-4" /></button>
                             <button
                               onClick={() => parseAndPublishJob(job.id)}
                               disabled={job._parsing}
-                              aria-label={`Parse full details and publish ${payload.title}`}
-                              title="Fetch source page, re-parse with AI, and publish"
+                              aria-label={`Add ${payload.title} to database`}
+                              title="Fetch source page, AI-parse into SEO listing, and publish"
                               className="flex items-center gap-1.5 px-2.5 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 disabled:opacity-40 text-amber-400 hover:text-amber-300 rounded border border-amber-500/30 text-[11px] font-bold transition-colors"
                             >
                               <Wand2 className="w-3.5 h-3.5" />
-                              {job._parsing ? 'Parsing…' : 'Parse & Add'}
+                              {job._parsing ? 'Parsing…' : 'Add to Database'}
                             </button>
                           </div>
                         </div>
