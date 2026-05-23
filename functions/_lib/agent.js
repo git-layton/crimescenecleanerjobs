@@ -342,7 +342,7 @@ export async function runDailyImport(env, options = {}) {
             allCandidates.push(candidate);
           }
 
-          const hasApplyForPublish = payload.apply_url || payload.contact_email || payload.source_url;
+          const hasApplyForPublish = payload.apply_url || payload.contact_email || payload.contact_phone;
           const meetsRequirements = payload.company && hasApplyForPublish;
           if (autoPublish && meetsRequirements && Number(payload.confidence || 0) >= publishThreshold) {
             await insertJob(env, { ...payload, status: 'active' }, { defaultStatus: 'active' });

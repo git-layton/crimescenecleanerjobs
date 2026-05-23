@@ -46,6 +46,9 @@ const dbService = {
 
   deleteJob: async (id) => apiRequest(`/api/jobs/${id}`, { method: 'DELETE', admin: true }),
 
+  deleteJobWithCode: async (slug, code) => apiRequest('/api/edit-codes/delete', { method: 'POST', body: { job: slug, code } }),
+  fillJobWithCode: async (slug, code) => apiRequest('/api/edit-codes/delete', { method: 'POST', body: { job: slug, code, action: 'fill' } }),
+
   updateJobStatus: async (id, status) => apiRequest(`/api/jobs/${id}`, {
     method: 'PATCH',
     admin: true,
@@ -231,7 +234,7 @@ const formStateFromJob = (job = {}) => ({
   paytype: job.paytype || job.pay_type || 'Pay Type Not Specified',
   category: job.category || 'Full-time',
   content: job.content || job.description || '',
-  contact: job.contact || job.apply_url || job.contact_email || '',
+  contact: job.contact || job.apply_url || job.contact_phone || job.contact_email || '',
   owner_email: job.owner_email || '',
 });
 
@@ -488,7 +491,7 @@ const RichTextEditor = ({ value, onChange, parseKey }) => {
   );
 };
 
-const JobForm = ({ onSave, onDirectSave, onCancel, onShowMessage, initialJob = null, mode = 'create' }) => {
+const JobForm = ({ onSave, onDirectSave, onCancel, onShowMessage, onManage, initialJob = null, mode = 'create' }) => {
   const [formData, setFormData] = useState(() => formStateFromJob(initialJob || {}));
   const [aiText, setAiText] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -636,7 +639,8 @@ const JobForm = ({ onSave, onDirectSave, onCancel, onShowMessage, initialJob = n
         <div className="absolute top-0 left-0 w-full h-2 bg-[repeating-linear-gradient(45deg,#f59e0b,#f59e0b_10px,#18181b_10px,#18181b_20px)] opacity-50" aria-hidden="true"></div>
         <div className="flex items-center gap-3 mb-4 mt-2">
           <Wand2 className="w-8 h-8 text-amber-500" aria-hidden="true" />
-          <h2 className="text-2xl font-bold text-zinc-100 uppercase tracking-tight">Easy Post</h2>
+          <h2 className="text-2xl font-bold text-zinc-100 uppercase tracking-tight flex-1">Easy Post</h2>
+          {onCancel && <button onClick={onCancel} aria-label="Cancel" className="text-zinc-500 hover:text-zinc-200 transition-colors"><X className="w-5 h-5" /></button>}
         </div>
         <p className="text-zinc-400 mb-6 leading-relaxed text-sm font-mono">
           Paste your job description or drag and drop a text file. We'll extract the details and generate an SEO-optimized listing.
@@ -807,11 +811,16 @@ const JobForm = ({ onSave, onDirectSave, onCancel, onShowMessage, initialJob = n
         {Object.keys(errors).length > 0 && (
           <p className="text-red-400 text-sm mb-4 font-mono">⚠ Please fill in the required fields highlighted above.</p>
         )}
-        <div className="flex justify-end space-x-4">
-          <button onClick={onCancel} className="px-6 py-2.5 rounded-md font-bold uppercase tracking-wide text-zinc-400 hover:text-zinc-100 transition-colors">Cancel</button>
-          <button onClick={() => { dbService.logEvent('submit_click'); handlePaymentAndSave(); }} disabled={isProcessing} className="px-8 py-2.5 bg-amber-500 text-zinc-950 font-bold uppercase tracking-wide rounded-md hover:bg-amber-400 transition-colors active:scale-[0.98] disabled:opacity-50">
-            {isProcessing ? 'Saving...' : mode === 'edit' ? 'Save Updates' : 'Post Job →'}
-          </button>
+        <div className="flex items-center justify-between gap-4">
+          {mode === 'edit' && onManage ? (
+            <button onClick={onManage} type="button" className="text-xs text-zinc-600 hover:text-red-400 transition-colors uppercase tracking-widest">Fill or Remove Listing</button>
+          ) : <span />}
+          <div className="flex gap-3">
+            <button onClick={onCancel} className="px-6 py-2.5 rounded-md font-bold uppercase tracking-wide text-zinc-400 hover:text-zinc-100 transition-colors">Cancel</button>
+            <button onClick={() => { dbService.logEvent('submit_click'); handlePaymentAndSave(); }} disabled={isProcessing} className="px-8 py-2.5 bg-amber-500 text-zinc-950 font-bold uppercase tracking-wide rounded-md hover:bg-amber-400 transition-colors active:scale-[0.98] disabled:opacity-50">
+              {isProcessing ? 'Saving...' : mode === 'edit' ? 'Save Updates' : 'Post Job →'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -878,6 +887,7 @@ const EditPostGateway = ({ initialJobKey = '', initialCode = '', onCancel, onSho
   const [emailJobKey, setEmailJobKey] = useState(initialJobKey);
   const [email, setEmail] = useState('');
   const [emailSent, setEmailSent] = useState(false);
+  const [showManagePanel, setShowManagePanel] = useState(false);
 
   const inputClass = 'w-full p-2.5 bg-zinc-950 border border-zinc-800 rounded-md text-zinc-100 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors';
   const labelClass = 'block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2';
@@ -929,7 +939,52 @@ const EditPostGateway = ({ initialJobKey = '', initialCode = '', onCancel, onSho
     }
   };
 
+  const handleFillOrDelete = async (action) => {
+    setIsProcessing(true);
+    try {
+      await (action === 'fill' ? dbService.fillJobWithCode(verifiedJob.slug, verifiedCode) : dbService.deleteJobWithCode(verifiedJob.slug, verifiedCode));
+      onShowMessage(action === 'fill' ? 'Listing Marked Filled' : 'Listing Removed', action === 'fill' ? 'Your listing has been marked as filled and is no longer visible.' : 'Your listing has been permanently deleted.', 'info');
+      await onSaved?.();
+    } catch (error) {
+      onShowMessage('Action Failed', error.message, 'info');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   if (verifiedJob) {
+    if (showManagePanel) {
+      return (
+        <div className="max-w-md mx-auto mt-16">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-8 shadow-2xl space-y-5">
+            <div className="flex items-center gap-3">
+              <ShieldCheck className="w-6 h-6 text-amber-500" />
+              <div className="flex-1">
+                <p className="text-xs text-zinc-500 uppercase tracking-widest">Managing listing</p>
+                <p className="text-sm font-bold text-zinc-100">{verifiedJob.title}</p>
+              </div>
+            </div>
+            <p className="text-xs text-zinc-500">This action cannot be undone.</p>
+            <button
+              onClick={() => handleFillOrDelete('fill')}
+              disabled={isProcessing}
+              className="w-full py-3 bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 font-bold uppercase tracking-wide rounded-lg text-sm transition-colors disabled:opacity-40"
+            >
+              {isProcessing ? 'Working…' : 'Mark Position as Filled'}
+            </button>
+            <button
+              onClick={() => handleFillOrDelete('delete')}
+              disabled={isProcessing}
+              className="w-full py-3 bg-red-500/20 hover:bg-red-500/30 text-red-400 font-bold uppercase tracking-wide rounded-lg text-sm transition-colors disabled:opacity-40"
+            >
+              {isProcessing ? 'Working…' : 'Permanently Delete Listing'}
+            </button>
+            <button onClick={() => setShowManagePanel(false)} className="w-full text-xs text-zinc-600 hover:text-zinc-400 transition-colors">← Back to edit</button>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <JobForm
         key={verifiedJob.id}
@@ -938,6 +993,7 @@ const EditPostGateway = ({ initialJobKey = '', initialCode = '', onCancel, onSho
         onSave={handleSave}
         onCancel={onCancel}
         onShowMessage={onShowMessage}
+        onManage={() => setShowManagePanel(true)}
       />
     );
   }
@@ -1147,8 +1203,14 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
   };
 
   const saveQueries = async (queries) => {
+    const prev = scanQueries;
     setScanQueries(queries);
-    await dbService.updateSettings({ scan_queries: queries.join(';') }).catch(() => {});
+    try {
+      await dbService.updateSettings({ scan_queries: queries.join(';') });
+    } catch (err) {
+      setScanQueries(prev);
+      showMessage('Save Failed', err.message || 'Could not save queries. Check your admin token.', 'info');
+    }
   };
 
   const addQuery = async () => {
@@ -1479,10 +1541,10 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
                     const state = job.state || payload.state || '';
                     const confidence = Math.round(Number(job.confidence || payload.confidence || 0) * 100);
                     const sourceUrl = job.source_url || payload.source_url || '';
-                    const hasApply = payload.apply_url || payload.contact_email || sourceUrl;
+                    const hasApply = payload.apply_url || payload.contact_email || payload.contact_phone;
                     const missingBlocking = [];
                     if (!company) missingBlocking.push('company');
-                    if (!hasApply) missingBlocking.push('apply link');
+                    if (!hasApply) missingBlocking.push('apply/contact');
                     const missingOptional = [];
                     if (!title) missingOptional.push('title');
                     if (!city && !state) missingOptional.push('location');
@@ -1520,6 +1582,7 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
                                 return [
                                   { label: applyLabel, val: applyVal, fallback: !applyUrl && !!sourceUrl },
                                   { label: 'Contact Email', val: payload.contact_email },
+                                  { label: 'Contact Phone', val: payload.contact_phone },
                                   { label: 'Pay', val: payload.pay_min || payload.pay_max ? `$${payload.pay_min || '?'}–$${payload.pay_max || '?'} ${payload.pay_type || ''}` : null },
                                   { label: 'Employment', val: payload.employment_type },
                                   { label: 'Source', val: sourceUrl },

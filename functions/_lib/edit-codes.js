@@ -250,6 +250,7 @@ export async function updateJobWithEditCode(env, { idOrSlug, code, patch, siteUr
     contact: patch.contact,
     apply_url: patch.apply_url,
     contact_email: patch.contact_email,
+    contact_phone: patch.contact_phone,
     owner_email: verified.owner_email,
     status: 'pending',
     last_edited_at: new Date().toISOString(),

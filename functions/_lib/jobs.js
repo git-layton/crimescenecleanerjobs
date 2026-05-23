@@ -74,6 +74,7 @@ export const JOB_COLUMNS = [
   'description',
   'apply_url',
   'contact_email',
+  'contact_phone',
   'owner_email',
   'source_url',
   'source_name',
@@ -160,18 +161,19 @@ function normalizeState(value) {
   return STATE_CODES[state] || state.slice(0, 2);
 }
 
+const PHONE_RE = /(?:\+1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})/;
+
 function normalizeContact(input) {
   const contact = clean(input.contact || '', 1000);
-  const applyUrl = clean(input.apply_url || (contact.startsWith('http') ? contact : '') || input.source_url || '', 1000);
+  const applyUrl = clean(input.apply_url || (contact.startsWith('http') ? contact : '') || '', 1000);
   const contactEmail = clean(input.contact_email || (contact.includes('@') && !contact.startsWith('http') ? contact : ''), 320);
-  // phone number: neither URL nor email — store as tel: so active-job validation passes
-  if (!applyUrl && !contactEmail && contact) return { applyUrl: `tel:${contact}`, contactEmail: '' };
-  return { applyUrl, contactEmail };
+  const contactPhone = clean(input.contact_phone || (PHONE_RE.test(contact) && !contact.startsWith('http') && !contact.includes('@') ? contact : ''), 40);
+  return { applyUrl, contactEmail, contactPhone };
 }
 
 export function normalizeJobInput(input, options = {}) {
   const now = options.now || new Date().toISOString();
-  const { applyUrl, contactEmail } = normalizeContact(input);
+  const { applyUrl, contactEmail, contactPhone } = normalizeContact(input);
   const status = normalizeStatus(input.status, options.defaultStatus || 'pending');
   const publishedAt = input.published_at || (status === 'active' ? now : null);
 
@@ -195,6 +197,7 @@ export function normalizeJobInput(input, options = {}) {
     description: cleanLong(input.description || input.content, 16000),
     apply_url: applyUrl || null,
     contact_email: contactEmail || null,
+    contact_phone: contactPhone || null,
     owner_email: clean(input.owner_email, 320).toLowerCase() || contactEmail || null,
     source_url: clean(input.source_url, 1000) || null,
     source_name: clean(input.source_name, 120) || null,
@@ -218,7 +221,7 @@ export function validateJob(job) {
   if (job.status === 'active') {
     if (!job.city) missing.push('city');
     if (!job.state) missing.push('state');
-    if (!job.apply_url && !job.contact_email && !job.source_url) missing.push('apply_url or contact_email');
+    if (!job.apply_url && !job.contact_email && !job.contact_phone) missing.push('apply_url, contact_email, or contact_phone');
   }
   return missing;
 }
@@ -264,7 +267,8 @@ export function rowToJob(row, siteUrl = '', options = {}) {
     description: row.description,
     apply_url: row.apply_url || '',
     contact_email: row.contact_email || '',
-    contact: row.apply_url || row.contact_email || row.source_url || '',
+    contact_phone: row.contact_phone || '',
+    contact: row.apply_url || row.contact_email || row.contact_phone || row.source_url || '',
     source_url: row.source_url || '',
     source_name: row.source_name || '',
     source_type: row.source_type || 'manual',
@@ -341,15 +345,15 @@ export async function insertJob(env, input, options = {}) {
     `INSERT INTO jobs (
       id, slug, status, title, company, company_url, city, state, postal_code, country,
       location_type, employment_type, pay_min, pay_max, pay_type, currency, description,
-      apply_url, contact_email, owner_email, source_url, source_name, source_type, confidence,
+      apply_url, contact_email, contact_phone, owner_email, source_url, source_name, source_type, confidence,
       valid_through, expires_at, published_at, indexed_at, last_edited_at, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).bind(
     job.id, job.slug, job.status, job.title, job.company, job.company_url, job.city, job.state,
     job.postal_code, job.country, job.location_type, job.employment_type, job.pay_min, job.pay_max,
-    job.pay_type, job.currency, job.description, job.apply_url, job.contact_email, job.owner_email,
-    job.source_url, job.source_name, job.source_type, job.confidence, job.valid_through, job.expires_at,
-    job.published_at, job.indexed_at, job.last_edited_at, job.created_at, job.updated_at
+    job.pay_type, job.currency, job.description, job.apply_url, job.contact_email, job.contact_phone,
+    job.owner_email, job.source_url, job.source_name, job.source_type, job.confidence, job.valid_through,
+    job.expires_at, job.published_at, job.indexed_at, job.last_edited_at, job.created_at, job.updated_at
   ).run();
 
   return getJob(env, job.id, { includeInactive: true, siteUrl: options.siteUrl });
@@ -391,7 +395,7 @@ export async function updateJob(env, idOrSlug, input, options = {}) {
       status = ?, title = ?, company = ?, company_url = ?, city = ?, state = ?,
       postal_code = ?, country = ?, location_type = ?, employment_type = ?,
       pay_min = ?, pay_max = ?, pay_type = ?, currency = ?, description = ?,
-      apply_url = ?, contact_email = ?, owner_email = ?, source_url = ?, source_name = ?,
+      apply_url = ?, contact_email = ?, contact_phone = ?, owner_email = ?, source_url = ?, source_name = ?,
       source_type = ?, confidence = ?, valid_through = ?, expires_at = ?,
       published_at = ?, indexed_at = ?, last_edited_at = ?, updated_at = ?
     WHERE id = ?`
@@ -413,6 +417,7 @@ export async function updateJob(env, idOrSlug, input, options = {}) {
     normalized.description,
     normalized.apply_url,
     normalized.contact_email,
+    normalized.contact_phone,
     normalized.owner_email,
     normalized.source_url,
     normalized.source_name,

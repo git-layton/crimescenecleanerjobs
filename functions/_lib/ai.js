@@ -1,6 +1,14 @@
 const STATE_RE = /\b(AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|IA|ID|IL|IN|KS|KY|LA|MA|MD|ME|MI|MN|MO|MS|MT|NC|ND|NE|NH|NJ|NM|NV|NY|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VA|VT|WA|WI|WV|WY|DC)\b/;
 const EMAIL_RE = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
+const PHONE_RE = /(?:\+1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})/;
 const URL_RE = /https?:\/\/[^\s)"']+/i;
+
+function isHomepageUrl(url) {
+  try {
+    const u = new URL(url);
+    return u.pathname === '/' || u.pathname === '';
+  } catch { return false; }
+}
 
 function clean(value, max = 5000) {
   if (value == null) return '';
@@ -60,7 +68,9 @@ function heuristicParse(rawText, hints = {}) {
   const company = companyLine.replace(/^(company|employer|hiring organization)\s*:\s*/i, '');
   const pay = parsePay(text);
   const email = text.match(EMAIL_RE)?.[0] || '';
+  const phone = text.match(PHONE_RE)?.[0] || '';
   const url = text.match(URL_RE)?.[0] || '';
+  const applyUrl = hints.apply_url || (!isHomepageUrl(url) ? url : '') || '';
 
   return {
     title: clean(hints.title || titleLine || 'Biohazard Cleanup Technician', 160),
@@ -73,8 +83,9 @@ function heuristicParse(rawText, hints = {}) {
     pay_type: hints.pay_type || pay.pay_type,
     employment_type: hints.employment_type || parseEmploymentType(text),
     description: stripPreamble(text).slice(0, 12000),
-    apply_url: clean(hints.apply_url || url || '', 1000),
+    apply_url: clean(applyUrl, 1000),
     contact_email: clean(hints.contact_email || email || '', 320),
+    contact_phone: clean(hints.contact_phone || phone || '', 40),
     source_url: clean(hints.source_url || url || '', 1000),
     source_name: clean(hints.source_name || '', 120),
     confidence: hints.confidence ?? 0.35,
@@ -109,14 +120,16 @@ STEP 1 — Extract these fields from the real job content only:
 - pay_min, pay_max: integers only, no symbols
 - pay_type: "Hourly" | "Salary" | "Contract" | "Pay Type Not Specified"
 - employment_type: FULL_TIME | PART_TIME | CONTRACTOR | TEMPORARY | PER_DIEM | INTERN | VOLUNTEER | OTHER
-- apply_url: direct application URL if present
+- apply_url: direct job application URL (ATS or job board link — NOT the company homepage)
 - contact_email: hiring contact email if present
+- contact_phone: hiring contact phone number if present (digits + formatting only, e.g. "555-867-5309")
 - source_url, source_name: where the listing came from
 - confidence: 0.0–1.0 — how confident this is a real active job post (not a template or example)
 
-CRITICAL — company and apply_url are required to publish this job. Extract them from every available signal:
+CRITICAL — to publish this job we need company + at least one of: apply_url, contact_email, contact_phone.
 - company: check "About [Company]", employer name on job board, "posted by", email domain, copyright footer, or any brand name in the listing
-- apply_url: look for "Apply Now" / "Apply Here" links, ATS URLs (greenhouse.io, lever.co, workday.com, icims.com, bamboohr.com, ziprecruiter.com, indeed.com), or the canonical job page URL if no ATS link is found; do NOT leave empty if a URL exists on the page
+- apply_url: MUST be a job-specific URL — ATS link (greenhouse.io, lever.co, workday.com, icims.com, bamboohr.com, ziprecruiter.com, indeed.com) or a direct "Apply Now" / "Apply Here" link. NEVER use the company homepage (e.g. https://company.com or https://company.com/) — a root domain with no path is NOT a valid apply link. Leave apply_url empty if no specific job or ATS link is found.
+- contact_phone: look for a phone number in the listing ("Call us at...", "tel:", formatted phone numbers)
 
 STEP 2 — Write the "description" field as SEO-optimized professional HTML.
 Use ONLY these tags: <h2> <p> <ul> <li> <strong>
@@ -166,6 +179,7 @@ Return ONLY a raw JSON object. No markdown, no code fences, no explanation.`,
   const parsed = JSON.parse(raw || '{}');
   // Don't let Claude's empty strings clobber structured hint values (e.g. Adzuna company/location).
   // Claude only wins on a field if it actually found something.
+  const applyUrl = parsed.apply_url && !isHomepageUrl(parsed.apply_url) ? parsed.apply_url : fallback.apply_url;
   return {
     ...fallback,
     ...parsed,
@@ -173,8 +187,9 @@ Return ONLY a raw JSON object. No markdown, no code fences, no explanation.`,
     company: parsed.company || fallback.company,
     city: parsed.city || fallback.city,
     state: parsed.state || fallback.state,
-    apply_url: parsed.apply_url || fallback.apply_url,
+    apply_url: applyUrl,
     contact_email: parsed.contact_email || fallback.contact_email,
+    contact_phone: parsed.contact_phone || fallback.contact_phone,
     pay_min: (parsed.pay_min !== undefined && parsed.pay_min !== '') ? parsed.pay_min : fallback.pay_min,
     pay_max: (parsed.pay_max !== undefined && parsed.pay_max !== '') ? parsed.pay_max : fallback.pay_max,
     confidence: Number(parsed.confidence ?? fallback.confidence),

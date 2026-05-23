@@ -13,6 +13,7 @@ import { onRequestPost as parseAndPublishCandidate } from '../functions/api/admi
 import { onRequestPost as requestEditCode } from '../functions/api/edit-codes/request.js';
 import { onRequestPost as verifyEditCode } from '../functions/api/edit-codes/verify.js';
 import { onRequestPatch as updateWithEditCode } from '../functions/api/edit-codes/update.js';
+import { onRequestPost as deleteOrFillWithEditCode } from '../functions/api/edit-codes/delete.js';
 import { onRequestPost as verifyPromo } from '../functions/api/checkout/verify-promo.js';
 import { onRequestPost as logEvent, onRequestGet as getEvents } from '../functions/api/events.js';
 import { onRequestPost as requestIndexing } from '../functions/api/admin/indexing.js';
@@ -179,6 +180,10 @@ async function routeRequest(request, env, ctx) {
 
   if (pathname === '/api/edit-codes/update' && method === 'PATCH') {
     return run(updateWithEditCode, request, env, ctx);
+  }
+
+  if (pathname === '/api/edit-codes/delete' && method === 'POST') {
+    return run(deleteOrFillWithEditCode, request, env, ctx);
   }
 
   if (pathname === '/api/google/jobs.json' && method === 'GET') {
