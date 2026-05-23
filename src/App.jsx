@@ -1572,7 +1572,17 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
                           </button>
                           <div className="flex gap-2 shrink-0">
                             <button onClick={() => rejectJob(job.id)} className="p-2 bg-zinc-900 hover:bg-red-500/20 text-zinc-500 hover:text-red-500 rounded border border-zinc-800"><X className="w-4 h-4" /></button>
-                            <button onClick={() => parseAndPublishJob(job.id, job._overrides || {})} disabled={job._parsing} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 disabled:opacity-40 text-amber-400 hover:text-amber-300 rounded border border-amber-500/30 text-[11px] font-bold transition-colors">
+                            <button onClick={() => {
+                              const ov = job._overrides || {};
+                              const method = job._applyMethod || (payload.apply_url || sourceUrl ? 'web' : payload.contact_email ? 'email' : 'phone');
+                              const effectiveOv = { ...ov };
+                              if (method === 'web') {
+                                if (!effectiveOv.apply_url) effectiveOv.apply_url = payload.apply_url || sourceUrl || '';
+                              } else {
+                                effectiveOv.apply_url = ''; // explicitly clear so backend doesn't use sourceUrl fallback
+                              }
+                              parseAndPublishJob(job.id, effectiveOv);
+                            }} disabled={job._parsing} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 disabled:opacity-40 text-amber-400 hover:text-amber-300 rounded border border-amber-500/30 text-[11px] font-bold transition-colors">
                               <Wand2 className="w-3.5 h-3.5" />{job._parsing ? 'Parsing…' : 'Add to Database'}
                             </button>
                           </div>
@@ -1580,50 +1590,112 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
                         {isExpanded && (() => {
                           const ov = job._overrides || {};
                           const setOv = (field, val) => setScrapedJobs(prev => prev.map(j => j.id === job.id ? { ...j, _overrides: { ...(j._overrides || {}), [field]: val } } : j));
-                          const inputCls = 'w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-zinc-200 text-xs font-mono focus:outline-none focus:border-amber-500/60 placeholder-zinc-600';
-                          const labelCls = 'text-[10px] font-bold uppercase tracking-widest text-zinc-600 mb-1 block';
-                          const ovLabelCls = 'text-[10px] font-bold uppercase tracking-widest text-amber-500 mb-1 block';
+                          const setMethod = (m) => setScrapedJobs(prev => prev.map(j => j.id === job.id ? { ...j, _applyMethod: m } : j));
+
+                          // Resolved values: override > parsed payload > fallbacks
+                          const resolvedCompany = ov.company !== undefined ? ov.company : (company || '');
+                          const resolvedApplyUrl = ov.apply_url !== undefined ? ov.apply_url : (payload.apply_url || sourceUrl || '');
+                          const resolvedEmail = ov.contact_email !== undefined ? ov.contact_email : (payload.contact_email || '');
+                          const resolvedPhone = ov.contact_phone !== undefined ? ov.contact_phone : (payload.contact_phone || '');
+
+                          // Default method: web if any URL available, else email, else phone
+                          const method = job._applyMethod || (payload.apply_url || sourceUrl ? 'web' : payload.contact_email ? 'email' : 'phone');
+                          const activeContact = method === 'web' ? resolvedApplyUrl : method === 'email' ? resolvedEmail : resolvedPhone;
+
+                          const isMissingCompany = !resolvedCompany;
+                          const isMissingContact = !activeContact;
+
+                          const baseInput = 'w-full bg-zinc-900 border rounded px-2 py-1 text-zinc-200 text-xs font-mono focus:outline-none placeholder-zinc-600 ';
+                          const inputCls = (missing, overridden) =>
+                            baseInput + (missing ? 'border-red-500/70 focus:border-red-400' : overridden ? 'border-amber-500/50 focus:border-amber-400' : 'border-zinc-700 focus:border-amber-500/60');
+                          const labelCls = (missing, overridden) =>
+                            'text-[10px] font-bold uppercase tracking-widest mb-1 block ' + (missing ? 'text-red-400' : overridden ? 'text-amber-500' : 'text-zinc-600');
+
+                          const methodBtn = (m, icon, label) => (
+                            <button key={m} type="button" onClick={() => setMethod(m)} className={`flex items-center gap-1 px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-wide transition-colors ${method === m ? 'bg-amber-500 text-zinc-950' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'}`}>{icon} {label}</button>
+                          );
+
                           return (
                             <div className="border-t border-zinc-800 p-4 space-y-4 text-xs">
-                              <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">Override fields before publishing (optional)</p>
-                              <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                  <label className={ov.company !== undefined ? ovLabelCls : labelCls}>Company{ov.company !== undefined ? ' ✎' : ''}</label>
-                                  <input className={inputCls} placeholder={company || 'Unknown company'} value={ov.company !== undefined ? ov.company : ''} onChange={e => setOv('company', e.target.value)} />
+                              {/* Required fields status */}
+                              {(isMissingCompany || isMissingContact) && (
+                                <div className="flex gap-2 flex-wrap">
+                                  {isMissingCompany && <span className="text-[10px] font-bold text-red-400 bg-red-500/10 border border-red-500/30 px-2 py-0.5 rounded">Missing: company</span>}
+                                  {isMissingContact && <span className="text-[10px] font-bold text-red-400 bg-red-500/10 border border-red-500/30 px-2 py-0.5 rounded">Missing: {method === 'web' ? 'apply URL' : method === 'email' ? 'contact email' : 'contact phone'}</span>}
                                 </div>
-                                <div>
-                                  <label className={ov.apply_url !== undefined ? ovLabelCls : labelCls}>Apply URL{ov.apply_url !== undefined ? ' ✎' : ''}</label>
-                                  <input className={inputCls} placeholder={payload.apply_url || sourceUrl || 'https://…'} value={ov.apply_url !== undefined ? ov.apply_url : ''} onChange={e => setOv('apply_url', e.target.value)} />
-                                </div>
-                                <div>
-                                  <label className={ov.contact_email !== undefined ? ovLabelCls : labelCls}>Contact Email{ov.contact_email !== undefined ? ' ✎' : ''}</label>
-                                  <input className={inputCls} placeholder={payload.contact_email || 'email@company.com'} value={ov.contact_email !== undefined ? ov.contact_email : ''} onChange={e => setOv('contact_email', e.target.value)} />
-                                </div>
-                                <div>
-                                  <label className={ov.contact_phone !== undefined ? ovLabelCls : labelCls}>Contact Phone{ov.contact_phone !== undefined ? ' ✎' : ''}</label>
-                                  <input className={inputCls} placeholder={payload.contact_phone || '(555) 000-0000'} value={ov.contact_phone !== undefined ? ov.contact_phone : ''} onChange={e => setOv('contact_phone', e.target.value)} />
-                                </div>
-                                <div>
-                                  <label className={ov.city !== undefined ? ovLabelCls : labelCls}>City{ov.city !== undefined ? ' ✎' : ''}</label>
-                                  <input className={inputCls} placeholder={city || 'City'} value={ov.city !== undefined ? ov.city : ''} onChange={e => setOv('city', e.target.value)} />
-                                </div>
-                                <div>
-                                  <label className={ov.state !== undefined ? ovLabelCls : labelCls}>State{ov.state !== undefined ? ' ✎' : ''}</label>
-                                  <input className={inputCls} placeholder={state || 'TX'} value={ov.state !== undefined ? ov.state : ''} onChange={e => setOv('state', e.target.value)} />
-                                </div>
+                              )}
+
+                              {/* Company */}
+                              <div>
+                                <label className={labelCls(isMissingCompany, ov.company !== undefined)}>Company{isMissingCompany ? ' — required' : ov.company !== undefined ? ' ✎' : ''}</label>
+                                <input className={inputCls(isMissingCompany, ov.company !== undefined)} placeholder="Company name" value={ov.company !== undefined ? ov.company : ''} onChange={e => setOv('company', e.target.value)} />
                               </div>
-                              <div className="grid grid-cols-2 gap-3 pt-1 border-t border-zinc-800/60">
-                                {[
-                                  { label: 'Pay', val: payload.pay_min || payload.pay_max ? `$${payload.pay_min || '?'}–$${payload.pay_max || '?'} ${payload.pay_type || ''}` : null },
-                                  { label: 'Employment', val: payload.employment_type },
-                                  { label: 'Source', val: sourceUrl },
-                                ].map(({ label, val }) => (
-                                  <div key={label}>
-                                    <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-600">{label}</p>
-                                    {val ? <p className="text-zinc-400 font-mono break-all">{val.length > 60 ? <a href={val} target="_blank" rel="noreferrer" className="text-amber-400 hover:text-amber-300">{val.slice(0, 60)}…</a> : val}</p> : <p className="text-zinc-600 italic">—</p>}
+
+                              {/* Apply method selector */}
+                              <div>
+                                <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-2">Apply via</p>
+                                <div className="flex gap-1.5 mb-3">
+                                  {methodBtn('web', '🌐', 'Web link')}
+                                  {methodBtn('email', '✉️', 'Email')}
+                                  {methodBtn('phone', '📞', 'Phone')}
+                                </div>
+                                {method === 'web' && (
+                                  <div>
+                                    <label className={labelCls(isMissingContact, ov.apply_url !== undefined)}>Apply URL{isMissingContact ? ' — required' : ov.apply_url !== undefined ? ' ✎' : sourceUrl ? ' (source URL)' : ''}</label>
+                                    <input className={inputCls(isMissingContact, ov.apply_url !== undefined)} placeholder={payload.apply_url || sourceUrl || 'https://…'} value={ov.apply_url !== undefined ? ov.apply_url : ''} onChange={e => setOv('apply_url', e.target.value)} />
+                                    {!payload.apply_url && sourceUrl && !ov.apply_url && <p className="text-[10px] text-amber-600 mt-1">Will use source URL as fallback: {sourceUrl.slice(0, 60)}</p>}
                                   </div>
-                                ))}
+                                )}
+                                {method === 'email' && (
+                                  <div>
+                                    <label className={labelCls(isMissingContact, ov.contact_email !== undefined)}>Contact Email{isMissingContact ? ' — required' : ov.contact_email !== undefined ? ' ✎' : ''}</label>
+                                    <input className={inputCls(isMissingContact, ov.contact_email !== undefined)} placeholder={payload.contact_email || 'apply@company.com'} value={ov.contact_email !== undefined ? ov.contact_email : ''} onChange={e => setOv('contact_email', e.target.value)} />
+                                  </div>
+                                )}
+                                {method === 'phone' && (
+                                  <div>
+                                    <label className={labelCls(isMissingContact, ov.contact_phone !== undefined)}>Contact Phone{isMissingContact ? ' — required' : ov.contact_phone !== undefined ? ' ✎' : ''}</label>
+                                    <input className={inputCls(isMissingContact, ov.contact_phone !== undefined)} placeholder={payload.contact_phone || '(555) 000-0000'} value={ov.contact_phone !== undefined ? ov.contact_phone : ''} onChange={e => setOv('contact_phone', e.target.value)} />
+                                  </div>
+                                )}
                               </div>
+
+                              {/* Secondary optional fields */}
+                              <div className="grid grid-cols-2 gap-3 pt-3 border-t border-zinc-800/60">
+                                <div>
+                                  <label className={labelCls(false, ov.city !== undefined)}>City{ov.city !== undefined ? ' ✎' : ''}</label>
+                                  <input className={inputCls(false, ov.city !== undefined)} placeholder={city || 'City'} value={ov.city !== undefined ? ov.city : ''} onChange={e => setOv('city', e.target.value)} />
+                                </div>
+                                <div>
+                                  <label className={labelCls(false, ov.state !== undefined)}>State{ov.state !== undefined ? ' ✎' : ''}</label>
+                                  <input className={inputCls(false, ov.state !== undefined)} placeholder={state || 'TX'} value={ov.state !== undefined ? ov.state : ''} onChange={e => setOv('state', e.target.value)} />
+                                </div>
+                                {method !== 'email' && (
+                                  <div>
+                                    <label className={labelCls(false, ov.contact_email !== undefined)}>Email (optional){ov.contact_email !== undefined ? ' ✎' : ''}</label>
+                                    <input className={inputCls(false, ov.contact_email !== undefined)} placeholder={payload.contact_email || 'email@company.com'} value={ov.contact_email !== undefined ? ov.contact_email : ''} onChange={e => setOv('contact_email', e.target.value)} />
+                                  </div>
+                                )}
+                                {method !== 'phone' && (
+                                  <div>
+                                    <label className={labelCls(false, ov.contact_phone !== undefined)}>Phone (optional){ov.contact_phone !== undefined ? ' ✎' : ''}</label>
+                                    <input className={inputCls(false, ov.contact_phone !== undefined)} placeholder={payload.contact_phone || '(555) 000-0000'} value={ov.contact_phone !== undefined ? ov.contact_phone : ''} onChange={e => setOv('contact_phone', e.target.value)} />
+                                  </div>
+                                )}
+                                <div>
+                                  <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-600">Employment</p>
+                                  <p className="text-zinc-400 font-mono">{payload.employment_type || <span className="text-zinc-600 italic">—</span>}</p>
+                                </div>
+                                <div>
+                                  <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-600">Pay</p>
+                                  <p className="text-zinc-400 font-mono">{payload.pay_min || payload.pay_max ? `$${payload.pay_min || '?'}–$${payload.pay_max || '?'} ${payload.pay_type || ''}` : <span className="text-zinc-600 italic">—</span>}</p>
+                                </div>
+                                <div className="col-span-2">
+                                  <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-600">Source</p>
+                                  {sourceUrl ? <a href={sourceUrl} target="_blank" rel="noreferrer" className="text-amber-400 hover:text-amber-300 font-mono break-all">{sourceUrl.slice(0, 80)}{sourceUrl.length > 80 ? '…' : ''}</a> : <span className="text-zinc-600 italic">—</span>}
+                                </div>
+                              </div>
+
                               {payload.description && (
                                 <div>
                                   <p className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest mb-1">Description preview</p>

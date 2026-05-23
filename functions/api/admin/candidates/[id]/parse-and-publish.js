@@ -51,7 +51,8 @@ export async function onRequestPost({ request, env, params }) {
     ...parsed,
     // Admin overrides win over everything
     ...overrides,
-    apply_url: overrides.apply_url || parsed.apply_url || sourceUrl,
+    // If admin explicitly set apply_url (even to '') respect it; '' means "use alt contact, not web"
+    apply_url: 'apply_url' in overrides ? (overrides.apply_url || null) : (parsed.apply_url || sourceUrl),
     source_type: 'import',
     source_url: sourceUrl,
     source_name: row.source_name,
