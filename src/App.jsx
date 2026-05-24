@@ -317,7 +317,7 @@ const applyInfo = (job) => {
   return { type: 'url', href: job.detail_path || `/jobs/${job.slug}`, label: 'View Posting', display: null };
 };
 
-const JobCard = ({ job, onDeleteRequest }) => {
+const JobCard = ({ job, onDeleteRequest, highlight }) => {
   const [expanded, setExpanded] = useState(false);
   const rawContent = job.content || '';
   const isHtml = rawContent.trimStart().startsWith('<');
@@ -326,7 +326,7 @@ const JobCard = ({ job, onDeleteRequest }) => {
   const companyIsLink = Boolean(job.company_url);
 
   return (
-    <article className="group relative bg-zinc-900 border border-zinc-800 rounded-xl p-6 mb-5 transition-all duration-300 hover:border-amber-500/50 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)]">
+    <article className={`group relative bg-zinc-900 border rounded-xl p-6 mb-5 transition-all duration-300 hover:border-amber-500/50 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] ${highlight ? 'border-amber-500/70 shadow-[0_0_24px_rgba(245,158,11,0.18)] ring-1 ring-amber-500/30' : 'border-zinc-800'}`}>
       <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500 rounded-l-xl opacity-0 group-hover:opacity-100 transition-opacity" aria-hidden="true"></div>
 
       <div className="flex justify-between items-start mb-4">
@@ -575,7 +575,6 @@ const JobForm = ({ onSave, onDirectSave, onCancel, onShowMessage, onManage, init
     const e = {};
     if (!formData.title.trim()) e.title = 'Job title is required';
     if (!formData.company.trim()) e.company = 'Company name is required';
-    if (!formData.company_url.trim()) e.company_url = 'Company website is required';
     if (!formData.city.trim()) e.city = 'City is required';
     if (!formData.contact.trim()) e.contact = 'Contact method is required';
     if (mode !== 'edit' && !formData.owner_email.trim()) e.owner_email = 'Email required to send your edit link';
@@ -1081,6 +1080,8 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
   const [scanQuery, setScanQuery] = useState('Crime Scene Cleanup');
   const [scanLocation, setScanLocation] = useState('Nationwide');
   const [scanHistory, setScanHistory] = useState(null);
+  const [inlineSuccess, setInlineSuccess] = useState(null);
+  const flashSuccess = (msg) => { setInlineSuccess(msg); setTimeout(() => setInlineSuccess(null), 4000); };
   const [healthData, setHealthData] = useState(null);
   const [autoPublish, setAutoPublish] = useState(false);
   const [autoPublishUntil, setAutoPublishUntil] = useState('');
@@ -1253,7 +1254,7 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
       const result = await dbService.parseAndPublish(id, overrides);
       setScrapedJobs(prev => prev.filter(j => j.id !== id));
       await onRefresh?.();
-      onShowMessage('Parsed & Published', `"${result.job?.title}" is now live.`, 'info');
+      flashSuccess(`✓ "${result.job?.title}" added to live jobs`);
     } catch (error) {
       setScrapedJobs(prev => prev.map(j => j.id === id ? { ...j, _parsing: false } : j));
       onShowMessage('Parse Failed', error.message, 'info');
@@ -1491,6 +1492,11 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
 
             {/* Pending review queue */}
             <div>
+              {inlineSuccess && (
+                <div className="mb-3 px-3 py-2 bg-green-500/10 border border-green-500/30 rounded-lg text-green-400 text-[11px] font-bold flex items-center gap-2">
+                  <span>{inlineSuccess}</span>
+                </div>
+              )}
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
                   Pending Review {scrapedJobs.length > 0 && <span className="text-amber-400">({scrapedJobs.length})</span>}
@@ -1521,7 +1527,7 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
                     const state = job.state || payload.state || '';
                     const confidence = Math.round(Number(job.confidence || payload.confidence || 0) * 100);
                     const sourceUrl = job.source_url || payload.source_url || '';
-                    const hasApply = payload.apply_url || payload.contact_email || payload.contact_phone;
+                    const hasApply = payload.apply_url || payload.contact_email || payload.contact_phone || sourceUrl;
                     const missingBlocking = [];
                     if (!company) missingBlocking.push('company');
                     if (!hasApply) missingBlocking.push('apply/contact');
@@ -1538,7 +1544,7 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
                           <button onClick={() => setScrapedJobs(prev => prev.map(j => j.id === job.id ? { ...j, _expanded: !j._expanded } : j))} className="flex-1 text-left min-w-0">
                             <div className="flex flex-wrap items-center gap-2 mb-1">
                               <h4 className="text-sm font-bold text-zinc-100">{title || <span className="text-red-400 italic">No title</span>}</h4>
-                              <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${confidence >= 80 ? 'bg-green-500/15 text-green-400' : confidence >= 60 ? 'bg-amber-500/15 text-amber-400' : 'bg-red-500/15 text-red-400'}`}>{confidence}%</span>
+                              <span title={`AI confidence score — how likely this is a real job listing (not a search results page). Green ≥80%, Amber ≥60%, Red <60%. Auto-publish threshold is set in Admin Settings.`} className={`cursor-help text-[10px] font-mono px-1.5 py-0.5 rounded ${confidence >= 80 ? 'bg-green-500/15 text-green-400' : confidence >= 60 ? 'bg-amber-500/15 text-amber-400' : 'bg-red-500/15 text-red-400'}`}>{confidence}% conf.</span>
                               <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${isReady ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'}`}>{isReady ? '✓ Ready' : `✗ ${missingBlocking.join(', ')}`}</span>
                               {missingOptional.length > 0 && <span className="text-[10px] text-zinc-500 font-mono">missing: {missingOptional.join(', ')}</span>}
                             </div>
@@ -1671,12 +1677,18 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
                                 </div>
                               </div>
 
-                              {payload.description && (
-                                <div>
-                                  <p className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest mb-1">Description preview</p>
-                                  <div className="text-zinc-400 leading-relaxed max-h-40 overflow-y-auto prose-sm" dangerouslySetInnerHTML={{ __html: payload.description.slice(0, 600) + (payload.description.length > 600 ? '…' : '') }} />
-                                </div>
-                              )}
+                              <div className="border-t border-zinc-800/60 pt-3">
+                                <label className={labelCls(false, ov.description !== undefined)}>Description{ov.description !== undefined ? ' ✎' : ''}</label>
+                                {payload.description && !ov.description && (
+                                  <div className="text-zinc-400 leading-relaxed max-h-32 overflow-y-auto text-[11px] bg-zinc-900/50 p-2 rounded border border-zinc-800 mb-2" dangerouslySetInnerHTML={{ __html: payload.description.slice(0, 800) + (payload.description.length > 800 ? '…' : '') }} />
+                                )}
+                                <textarea
+                                  className={inputCls(false, ov.description !== undefined) + ' min-h-[72px] resize-y text-[11px]'}
+                                  placeholder={payload.description ? '(leave blank to use description above — or paste an override)' : 'No description extracted — paste one here if needed'}
+                                  value={ov.description !== undefined ? ov.description : ''}
+                                  onChange={e => setOv('description', e.target.value)}
+                                />
+                              </div>
                             </div>
                           );
                         })()}
@@ -2162,6 +2174,7 @@ export default function App() {
   const [showFilters, setShowFilters] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminToken, setAdminToken] = useState(() => getAdminToken());
+  const [recentlyAddedJobId, setRecentlyAddedJobId] = useState(null);
   const [editTarget, setEditTarget] = useState(() => urlParams.get('edit') || '');
   const [editPrefilledCode, setEditPrefilledCode] = useState('');
   const [postedJob, setPostedJob] = useState(null);
@@ -2270,7 +2283,8 @@ export default function App() {
       if (isAdmin) {
         await loadJobs(true);
         setCurrentView('admin');
-        showMessage('Listing Added', `"${saved.title}" is live.`);
+        setRecentlyAddedJobId(saved.id);
+        setTimeout(() => setRecentlyAddedJobId(null), 5000);
         return;
       }
       if (saved.status === 'active' && saved.slug) {
@@ -2545,7 +2559,7 @@ export default function App() {
                   </div>
                 ) : (
                   filteredJobs.map(job => (
-                    <JobCard key={job.id} job={job} onDeleteRequest={isAdmin ? requestDeleteJob : undefined} />
+                    <JobCard key={job.id} job={job} onDeleteRequest={isAdmin ? requestDeleteJob : undefined} highlight={job.id === recentlyAddedJobId} />
                   ))
                 )}
               </section>

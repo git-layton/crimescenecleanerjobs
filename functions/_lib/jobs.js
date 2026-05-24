@@ -442,17 +442,18 @@ export async function updateJobIndexTimestamp(env, id, indexedAt = new Date().to
 export function buildJobPostingJsonLd(job, siteUrl, siteName = 'CrimeSceneCleanerJobs') {
   const jobUrl = `${siteUrl}/jobs/${job.slug}`;
   const salaryUnit = /salary|year/i.test(job.paytype || '') ? 'YEAR' : 'HOUR';
+  const descriptionText = job.description || job.content || '';
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'JobPosting',
-    title: job.title,
-    description: job.description || job.content,
-    datePosted: job.published_at || job.created_at,
-    validThrough: job.valid_through || job.expires_at,
-    employmentType: job.employment_type || 'OTHER',
+    title: job.title || undefined,
+    description: descriptionText || undefined,
+    datePosted: job.published_at || job.created_at || undefined,
+    validThrough: job.valid_through || job.expires_at || undefined,
+    employmentType: job.employment_type || undefined,
     hiringOrganization: {
       '@type': 'Organization',
-      name: job.company,
+      name: job.company || undefined,
     },
     identifier: {
       '@type': 'PropertyValue',
@@ -463,9 +464,8 @@ export function buildJobPostingJsonLd(job, siteUrl, siteName = 'CrimeSceneCleane
       '@type': 'Place',
       address: {
         '@type': 'PostalAddress',
-        addressLocality: job.city,
-        addressRegion: job.state,
-        postalCode: job.location || undefined,
+        addressLocality: job.city || undefined,
+        addressRegion: job.state || undefined,
         addressCountry: job.country || 'US',
       },
     },
