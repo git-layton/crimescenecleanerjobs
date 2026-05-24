@@ -217,10 +217,7 @@ export function validateJob(job) {
   const missing = [];
   if (!job.title) missing.push('title');
   if (!job.company) missing.push('company');
-  if (!job.description) missing.push('description');
   if (job.status === 'active') {
-    if (!job.city) missing.push('city');
-    if (!job.state) missing.push('state');
     if (!job.apply_url && !job.contact_email && !job.contact_phone) missing.push('apply_url, contact_email, or contact_phone');
   }
   return missing;
