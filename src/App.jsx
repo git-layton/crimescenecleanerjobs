@@ -8,6 +8,20 @@ import {
 
 const ADMIN_TOKEN_KEY = 'csj_admin_token';
 
+// Site config — injected by the Worker at runtime via window.SITE_CONFIG, falls back to defaults.
+const _S = (typeof window !== 'undefined' && window.SITE_CONFIG) || {};
+const SITE = {
+  name:            _S.name            || 'CrimeSceneCleanerJobs',
+  title:           _S.title           || 'CrimeSceneCleanerJobs — Find Your Next Mission',
+  tagline:         _S.tagline         || 'The premier dispatch board for biohazard remediation, trauma cleanup, and environmental hazard specialists.',
+  heroHeadline:    _S.heroHeadline    || 'Restore Order.',
+  heroSubheading:  _S.heroSubheading  || 'Find Your Next Mission.',
+  brandLabel:      _S.brandLabel      || 'The Elite Network',
+  nicheDescription:_S.nicheDescription|| 'biohazard remediation and crime scene cleanup',
+  nicheQuery:      _S.nicheQuery      || 'where can I find biohazard cleanup jobs?',
+  stripeUrl:       _S.stripeUrl       || '',
+};
+
 // --- CLOUDFLARE API CLIENT ---
 const getAdminToken = () => localStorage.getItem(ADMIN_TOKEN_KEY) || '';
 
@@ -2061,12 +2075,12 @@ const WhyPostHerePage = ({ onPostJob }) => {
     {
       icon: <Cpu className="w-6 h-6 text-amber-500" />,
       title: 'AI-Optimized for the New Search',
-      body: 'Job descriptions are rewritten by Claude AI into structured, semantic HTML — optimized not just for Google, but for ChatGPT, Gemini, and Perplexity. When someone asks an AI "where can I find biohazard cleanup jobs?" your listing shows up.',
+      body: `Job descriptions are rewritten by Claude AI into structured, semantic HTML — optimized not just for Google, but for ChatGPT, Gemini, and Perplexity. When someone asks an AI "${SITE.nicheQuery}" your listing shows up.`,
     },
     {
       icon: <Target className="w-6 h-6 text-amber-500" />,
       title: 'Zero Noise. Niche Audience.',
-      body: 'This board exists for one industry. Every visitor is a biohazard remediation or crime scene cleanup professional actively looking for work. No irrelevant applications from people who didn\'t read the posting.',
+      body: `This board exists for one industry. Every visitor is a ${SITE.nicheDescription} professional actively looking for work. No irrelevant applications from people who didn't read the posting.`,
     },
     {
       icon: <ShieldCheck className="w-6 h-6 text-amber-500" />,
@@ -2094,7 +2108,7 @@ const WhyPostHerePage = ({ onPostJob }) => {
           <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-yellow-600">Who Actually Do This Work</span>
         </h1>
         <p className="text-lg text-zinc-400 max-w-2xl leading-relaxed font-mono mb-8">
-          Hiring a biohazard remediation tech isn't like hiring a general laborer. You need someone certified, experienced, and serious. This is the only job board built for them.
+          Hiring a {SITE.nicheDescription} professional isn't like hiring a general laborer. You need someone certified, experienced, and serious. This is the only job board built for them.
         </p>
         <button
           onClick={onPostJob}
@@ -2172,7 +2186,7 @@ export default function App() {
   }, [isAdmin]);
 
   useEffect(() => {
-    document.title = 'CrimeSceneCleanerJobs — Find Your Next Mission';
+    document.title = SITE.title;
   }, []);
 
   useEffect(() => {
@@ -2276,7 +2290,7 @@ export default function App() {
     if (isAdmin) { await submitJob(newJob); return; }
     sessionStorage.setItem('pendingJob', JSON.stringify(newJob));
     dbService.logEvent('payment_initiated');
-    window.location.href = 'https://buy.stripe.com/6oU14mbCsbzo2sOb7G24000';
+    window.location.href = SITE.stripeUrl || 'https://buy.stripe.com/6oU14mbCsbzo2sOb7G24000';
   };
 
   const handleAddJobDirect = async (newJob) => {
@@ -2310,7 +2324,7 @@ export default function App() {
         <nav className="sticky top-0 z-50 bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800" aria-label="Main Navigation">
           <div className="h-1 w-full bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600" aria-hidden="true"></div>
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-            <a href="/" className="flex items-center group" aria-label="CrimeSceneCleanerJobs home" onClick={(e) => { e.preventDefault(); setCurrentView('home'); }}>
+            <a href="/" className="flex items-center group" aria-label={`${SITE.name} home`} onClick={(e) => { e.preventDefault(); setCurrentView('home'); }}>
               <TriangleAlert className="w-7 h-7 text-amber-500 mr-3 group-hover:rotate-12 transition-transform" aria-hidden="true" />
               <span className="font-black text-xl tracking-tighter uppercase text-zinc-100 hidden sm:block">
                 CrimeScene<span className="text-amber-500">Cleaner</span>Jobs
@@ -2378,7 +2392,7 @@ export default function App() {
           <div className="max-w-lg mx-auto mt-16 text-center">
             <div className="text-5xl mb-4">✅</div>
             <h2 className="text-3xl font-black uppercase tracking-tighter text-zinc-100 mb-2">Your listing is live!</h2>
-            <p className="text-zinc-400 font-mono mb-6">Indexed in Google Jobs and searchable by biohazard cleanup pros nationwide.</p>
+            <p className="text-zinc-400 font-mono mb-6">Indexed in Google Jobs and searchable by {SITE.nicheDescription} professionals nationwide.</p>
             <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-4 mb-6 text-left">
               {postedJob.editCode ? (
                 <>
@@ -2431,12 +2445,12 @@ export default function App() {
                   <ShieldAlert className="w-[400px] h-[400px]" />
                 </div>
                 <div className="relative z-10 max-w-3xl">
-                  <span className="inline-block py-1 px-3 rounded-full bg-zinc-950 border border-zinc-800 text-amber-500 text-xs font-bold tracking-widest uppercase mb-4">The Elite Network</span>
+                  <span className="inline-block py-1 px-3 rounded-full bg-zinc-950 border border-zinc-800 text-amber-500 text-xs font-bold tracking-widest uppercase mb-4">{SITE.brandLabel}</span>
                   <h1 className="text-4xl md:text-6xl font-black uppercase tracking-tighter text-zinc-100 leading-[1.1] mb-6">
-                    Restore Order. <br /><span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-yellow-600">Find Your Next Mission.</span>
+                    {SITE.heroHeadline} <br /><span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-yellow-600">{SITE.heroSubheading}</span>
                   </h1>
                   <p className="text-lg text-zinc-400 max-w-xl leading-relaxed font-mono">
-                    The premier dispatch board for biohazard remediation, trauma cleanup, and environmental hazard specialists. No fluff. Just the facts.
+                    {SITE.tagline}
                   </p>
                 </div>
               </div>
@@ -2539,7 +2553,7 @@ export default function App() {
 
       <footer className="border-t border-zinc-900 bg-zinc-950 py-8 mt-auto">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center">
-          <p className="text-xs text-zinc-600 uppercase tracking-widest font-mono">&copy; {new Date().getFullYear()} CrimeSceneCleanerJobs</p>
+          <p className="text-xs text-zinc-600 uppercase tracking-widest font-mono">&copy; {new Date().getFullYear()} {SITE.name}</p>
           <button
             onClick={() => setCurrentView('login')}
             className="text-[10px] text-zinc-800 hover:text-zinc-500 uppercase tracking-widest transition-colors font-bold"

@@ -41,8 +41,9 @@ export async function onRequestGet({ request, env, params }) {
     return html('<!doctype html><title>Job not found</title><meta name="robots" content="noindex"><h1>Job not found</h1>', 404);
   }
 
-  const jsonLd = buildJobPostingJsonLd(job, siteUrl);
-  const title = `${job.title} at ${job.company} | CrimeSceneCleanerJobs`;
+  const siteName = env.SITE_NAME || 'CrimeSceneCleanerJobs';
+  const jsonLd = buildJobPostingJsonLd(job, siteUrl, siteName);
+  const title = `${job.title} at ${job.company} | ${siteName}`;
   const description = (job.description || '').replace(/\s+/g, ' ').slice(0, 155);
 
   // Determine apply type
@@ -89,7 +90,7 @@ export async function onRequestGet({ request, env, params }) {
   </head>
   <body>
     <main>
-      <a href="/">CrimeSceneCleanerJobs</a>
+      <a href="/">${escapeHtml(siteName)}</a>
       <p class="eyebrow">${escapeHtml(job.category)} role</p>
       <h1>${escapeHtml(job.title)}</h1>
       <div class="meta">

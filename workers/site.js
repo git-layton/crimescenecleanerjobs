@@ -23,6 +23,36 @@ import { onRequestGet as getSitemap } from '../functions/sitemap.xml.js';
 import { onRequestGet as getJobPage } from '../functions/jobs/[slug].js';
 import { runDailyImport, maybeRunScheduledScan } from '../functions/_lib/agent.js';
 
+function injectSiteConfig(response, env) {
+  const name = env.SITE_NAME || 'CrimeSceneCleanerJobs';
+  const siteUrl = env.PUBLIC_SITE_URL || '';
+  const config = {
+    name,
+    title: env.SITE_TITLE || `${name} — Find Your Next Mission`,
+    description: env.SITE_DESCRIPTION || `${name} is the premier niche job board.`,
+    tagline: env.SITE_TAGLINE || `The premier job board for ${name} professionals.`,
+    heroHeadline: env.SITE_HERO_HEADLINE || 'Find Your Next Mission.',
+    heroSubheading: env.SITE_HERO_SUBHEADING || '',
+    brandLabel: env.SITE_BRAND_LABEL || 'Niche Job Board',
+    nicheDescription: env.NICHE_DESCRIPTION || name,
+    nicheQuery: env.NICHE_EXAMPLE_QUERY || `where can I find ${name} jobs?`,
+    stripeUrl: env.STRIPE_CHECKOUT_URL || '',
+    siteUrl,
+  };
+  const script = `<script>window.SITE_CONFIG=${JSON.stringify(config)}</script>`;
+  return new HTMLRewriter()
+    .on('title', { element(el) { el.setInnerContent(config.title); } })
+    .on('meta[name="description"]', { element(el) { el.setAttribute('content', config.description); } })
+    .on('meta[property="og:title"]', { element(el) { el.setAttribute('content', config.title); } })
+    .on('meta[property="og:description"]', { element(el) { el.setAttribute('content', config.tagline); } })
+    .on('meta[property="og:url"]', { element(el) { if (siteUrl) el.setAttribute('content', siteUrl); } })
+    .on('meta[name="twitter:title"]', { element(el) { el.setAttribute('content', config.title); } })
+    .on('meta[name="twitter:description"]', { element(el) { el.setAttribute('content', config.tagline); } })
+    .on('link[rel="canonical"]', { element(el) { if (siteUrl) el.setAttribute('href', siteUrl); } })
+    .on('head', { element(el) { el.append(script, { html: true }); } })
+    .transform(response);
+}
+
 const methodNotAllowed = () => new Response('Method not allowed', {
   status: 405,
   headers: { Allow: 'GET, POST, PATCH, DELETE' },
@@ -205,7 +235,10 @@ async function routeRequest(request, env, ctx) {
   }
 
   if (env.ASSETS) {
-    return env.ASSETS.fetch(request);
+    const response = await env.ASSETS.fetch(request);
+    const ct = response.headers.get('content-type') || '';
+    if (ct.includes('text/html')) return injectSiteConfig(response, env);
+    return response;
   }
 
   return new Response('Not found', { status: 404 });

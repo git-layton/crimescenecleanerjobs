@@ -439,7 +439,7 @@ export async function updateJobIndexTimestamp(env, id, indexedAt = new Date().to
   await env.DB.prepare('UPDATE jobs SET indexed_at = ?, updated_at = ? WHERE id = ?').bind(indexedAt, indexedAt, id).run();
 }
 
-export function buildJobPostingJsonLd(job, siteUrl) {
+export function buildJobPostingJsonLd(job, siteUrl, siteName = 'CrimeSceneCleanerJobs') {
   const jobUrl = `${siteUrl}/jobs/${job.slug}`;
   const salaryUnit = /salary|year/i.test(job.paytype || '') ? 'YEAR' : 'HOUR';
   const jsonLd = {
@@ -456,7 +456,7 @@ export function buildJobPostingJsonLd(job, siteUrl) {
     },
     identifier: {
       '@type': 'PropertyValue',
-      name: 'CrimeSceneCleanerJobs',
+      name: siteName,
       value: job.id,
     },
     jobLocation: {

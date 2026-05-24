@@ -60,9 +60,9 @@ async function sendEditCodeEmail(env, { to, code, job, siteUrl, expiresAt }) {
     body: JSON.stringify({
       from,
       to,
-      subject: `🔑 Your edit code — ${job.title} | CrimeSceneCleanerJobs`,
+      subject: `🔑 Your edit code — ${job.title} | ${env.SITE_NAME || 'CrimeSceneCleanerJobs'}`,
       text: [
-        `MISSION BRIEF — CrimeSceneCleanerJobs`,
+        `MISSION BRIEF — ${env.SITE_NAME || 'CrimeSceneCleanerJobs'}`,
         ``,
         `Your listing "${job.title}" is live.`,
         ``,
@@ -75,7 +75,7 @@ async function sendEditCodeEmail(env, { to, code, job, siteUrl, expiresAt }) {
         `Code expires: ${new Date(expiresAt).toLocaleString('en-US', { timeZone: 'UTC' })} UTC`,
         `Keep it somewhere safe — this is your key.`,
         ``,
-        `— The CrimeSceneCleanerJobs Team`,
+        `— The ${env.SITE_NAME || 'CrimeSceneCleanerJobs'} Team`,
       ].join('\n'),
       html: `
         <!doctype html>
@@ -106,7 +106,7 @@ async function sendEditCodeEmail(env, { to, code, job, siteUrl, expiresAt }) {
                   <p style="margin:0;color:#52525b;font-size:12px;line-height:1.6;">This code expires <strong style="color:#71717a;">${escapeHtml(new Date(expiresAt).toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric', timeZone:'UTC' })) }</strong>. Store it somewhere safe — it's the only way to edit your listing without contacting us.</p>
                 </td></tr>
                 <tr><td style="padding:20px 40px;border-top:1px solid #27272a;">
-                  <p style="margin:0;color:#3f3f46;font-size:11px;">CrimeSceneCleanerJobs &mdash; The premier board for biohazard remediation professionals.<br><a href="${siteUrl}" style="color:#52525b;">${siteUrl}</a></p>
+                  <p style="margin:0;color:#3f3f46;font-size:11px;">${escapeHtml(env.SITE_NAME || 'CrimeSceneCleanerJobs')} &mdash; The premier niche job board.<br><a href="${siteUrl}" style="color:#52525b;">${siteUrl}</a></p>
                 </td></tr>
               </table>
             </td></tr>

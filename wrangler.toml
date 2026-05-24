@@ -17,6 +17,19 @@ CLAUDE_MODEL = "claude-haiku-4-5-20251001"
 FROM_EMAIL = "CrimeSceneCleanerJobs <no-reply@crimescenecleanerjobs.com>"
 GOOGLE_INDEXING_ENABLED = "false"
 
+# ── Clone config ──────────────────────────────────────────────────────────────
+# Change these per clone. Everything else (DB, secrets) gets set via wrangler.
+SITE_NAME = "CrimeSceneCleanerJobs"
+SITE_TITLE = "CrimeSceneCleanerJobs — Find Your Next Mission"
+SITE_DESCRIPTION = "CrimeSceneCleanerJobs is the premier job board for biohazard remediation, trauma scene cleanup, and environmental hazard specialists. No fluff. Just real jobs."
+SITE_TAGLINE = "The premier dispatch board for biohazard remediation, trauma cleanup, and environmental hazard specialists."
+SITE_HERO_HEADLINE = "Restore Order."
+SITE_HERO_SUBHEADING = "Find Your Next Mission."
+SITE_BRAND_LABEL = "The Elite Network"
+NICHE_DESCRIPTION = "biohazard remediation and crime scene cleanup"
+NICHE_EXAMPLE_QUERY = "where can I find biohazard cleanup jobs?"
+STRIPE_CHECKOUT_URL = "https://buy.stripe.com/6oU14mbCsbzo2sOb7G24000"
+
 [[d1_databases]]
 binding = "DB"
 database_name = "crimescenecleanerjobs"
