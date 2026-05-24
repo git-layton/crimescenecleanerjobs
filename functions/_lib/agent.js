@@ -73,17 +73,12 @@ async function discoverWithAdzuna(env, query, location) {
   }));
 }
 
-async function discoverWithBrave(env, query, location) {
-  if (!env.BRAVE_SEARCH_API_KEY) return [];
-  const searchQuery = location && location.toLowerCase() !== 'nationwide'
-    ? `${query} ${location} jobs hiring`
-    : `${query} jobs hiring`;
+async function braveSearch(env, searchQuery) {
   const url = new URL('https://api.search.brave.com/res/v1/web/search');
   url.searchParams.set('q', searchQuery);
-  url.searchParams.set('count', '10');
+  url.searchParams.set('count', '20');
   url.searchParams.set('search_lang', 'en');
   url.searchParams.set('safesearch', 'off');
-
   const response = await fetch(url, {
     headers: {
       'Accept': 'application/json',
@@ -99,6 +94,28 @@ async function discoverWithBrave(env, query, location) {
     title: item.title,
     snippet: item.description || '',
   }));
+}
+
+async function discoverWithBrave(env, query, location) {
+  if (!env.BRAVE_SEARCH_API_KEY) return [];
+  const loc = location && location.toLowerCase() !== 'nationwide' ? ` ${location}` : '';
+
+  // Run broad search + site-targeted searches in parallel for maximum coverage.
+  // Site-targeted queries hit Brave's index directly for individual job pages,
+  // bypassing crawler blocks on Indeed/ZipRecruiter/LinkedIn.
+  const [broad, indeed, zip, linkedin] = await Promise.allSettled([
+    braveSearch(env, `${query}${loc} jobs hiring`),
+    braveSearch(env, `site:indeed.com/viewjob "${query}"`),
+    braveSearch(env, `site:ziprecruiter.com/c/ "${query}"`),
+    braveSearch(env, `site:linkedin.com/jobs/view "${query}"`),
+  ]);
+
+  return [
+    ...(broad.status === 'fulfilled' ? broad.value : []),
+    ...(indeed.status === 'fulfilled' ? indeed.value : []),
+    ...(zip.status === 'fulfilled' ? zip.value : []),
+    ...(linkedin.status === 'fulfilled' ? linkedin.value : []),
+  ];
 }
 
 function isSearchResultsPage(url) {
