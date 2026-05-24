@@ -1,0 +1,44 @@
+name = "applianceinstalljobs"
+main = "workers/site.js"
+compatibility_date = "2026-05-11"
+
+[vars]
+PUBLIC_SITE_URL = "https://applianceinstalljobs.com"
+DEFAULT_SCAN_LOCATION = "Nationwide"
+JOB_SCAN_QUERIES = "appliance installer;appliance installation technician;white glove delivery installer;appliance service technician;appliance delivery driver;appliance repair technician"
+AUTO_PUBLISH_JOBS = "false"
+AUTO_PUBLISH_MANUAL_JOBS = "false"
+SITE_KEYWORDS = "appliance installer, appliance installation technician, white glove delivery, appliance technician, appliance repair technician"
+AUTO_PUBLISH_CONFIDENCE = "0.92"
+FETCH_SOURCE_PAGES = "false"
+EDIT_CODE_DAYS = "30"
+RETURN_EDIT_CODE_AFTER_EMAIL = "false"
+CLAUDE_MODEL = "claude-haiku-4-5-20251001"
+FROM_EMAIL = "ApplianceInstallJobs <no-reply@applianceinstalljobs.com>"
+GOOGLE_INDEXING_ENABLED = "false"
+
+# ── Clone config ──────────────────────────────────────────────────────────────
+SITE_NAME = "ApplianceInstallJobs"
+SITE_TITLE = "ApplianceInstallJobs — Find Your Next Install"
+SITE_DESCRIPTION = "ApplianceInstallJobs is the premier job board for appliance installers, installation technicians, and white glove delivery specialists. Real jobs from top retailers and service companies."
+SITE_TAGLINE = "The premier job board for appliance installation and white glove delivery professionals."
+SITE_HERO_HEADLINE = "Find Your Next Install."
+SITE_HERO_SUBHEADING = "Connect with top appliance retailers and white glove service companies."
+SITE_BRAND_LABEL = "The Installation Network"
+NICHE_DESCRIPTION = "appliance installation and white glove delivery"
+NICHE_EXAMPLE_QUERY = "where can I find appliance installer jobs?"
+STRIPE_CHECKOUT_URL = "https://buy.stripe.com/6oU14mbCsbzo2sOb7G24000"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "applianceinstalljobs"
+database_id = "fbadd03f-f28e-45a8-ac03-f6a544c7d0c2"
+migrations_dir = "migrations"
+
+[triggers]
+crons = ["0 3 * * *", "0 * * * *"]
+
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
