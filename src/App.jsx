@@ -1004,6 +1004,7 @@ const AdminJobEditForm = ({ job, onSave }) => {
     contact_phone: job.contact_phone || '',
     payrangemin: job.payrangemin || '', payrangemax: job.payrangemax || '',
     paytype: job.paytype || 'Hourly', category: job.category || 'Full-time',
+    description: job.description || '',
     status: job.status || 'pending',
   });
   const f = (k) => (e) => setData(prev => ({ ...prev, [k]: e.target.value }));
@@ -1061,6 +1062,10 @@ const AdminJobEditForm = ({ job, onSave }) => {
         <select className={inputClass} value={data.status} onChange={f('status')}>
           {['active', 'pending', 'rejected', 'filled', 'expired', 'archived'].map(o => <option key={o}>{o}</option>)}
         </select>
+      </div>
+      <div className="col-span-2">
+        <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1">Description</label>
+        <textarea className={inputClass + ' min-h-[120px] resize-y text-sm leading-relaxed'} value={data.description} onChange={f('description')} placeholder="Job description…" />
       </div>
       <div className="col-span-2 flex justify-end mt-2">
         <button onClick={() => onSave(data)} className="bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold uppercase tracking-wide py-2 px-6 rounded text-sm">Save Changes</button>
@@ -1330,6 +1335,11 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
             </button>
           </div>
         )}
+        {inlineSuccess && (
+          <div className="mb-4 px-3 py-2 bg-green-500/10 border border-green-500/30 rounded-lg text-green-400 text-[11px] font-bold flex items-center gap-2">
+            <span>{inlineSuccess}</span>
+          </div>
+        )}
         {activeTab === 'aggregator' ? (
           <div className="space-y-5">
             {/* Agent status banner */}
@@ -1492,11 +1502,6 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
 
             {/* Pending review queue */}
             <div>
-              {inlineSuccess && (
-                <div className="mb-3 px-3 py-2 bg-green-500/10 border border-green-500/30 rounded-lg text-green-400 text-[11px] font-bold flex items-center gap-2">
-                  <span>{inlineSuccess}</span>
-                </div>
-              )}
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
                   Pending Review {scrapedJobs.length > 0 && <span className="text-amber-400">({scrapedJobs.length})</span>}
@@ -1875,11 +1880,6 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
                   <option key={s} value={s}>{s === 'all' ? 'All Statuses' : s}</option>
                 ))}
               </select>
-              {onAddJob && (
-                <button onClick={onAddJob} className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold uppercase tracking-wide py-2 px-4 rounded text-xs">
-                  <PlusCircle className="w-4 h-4" /> New Job
-                </button>
-              )}
             </div>
 
             {editingJob && (
@@ -1895,7 +1895,7 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
                       await dbService.updateJobFull(editingJob.id, data);
                       setEditingJob(null);
                       await onRefresh?.();
-                      onShowMessage('Updated', `${data.title || editingJob.title} saved.`, 'info');
+                      flashSuccess(`✓ "${data.title || editingJob.title}" saved`);
                     } catch (err) {
                       onShowMessage('Update Failed', err.message, 'info');
                     }
