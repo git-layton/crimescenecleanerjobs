@@ -1341,161 +1341,151 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
           </div>
         )}
         {activeTab === 'aggregator' ? (
-          <div className="space-y-5">
-            {/* Agent status banner */}
-            {(() => {
-              const lastRanAt = healthData?.scan_last_ran_at || healthData?.last_scan_at;
-              const intervalH = healthData?.scan_interval_hours || scanIntervalHours;
-              const nextMs = lastRanAt ? new Date(lastRanAt).getTime() + intervalH * 3600000 : null;
-              const nextIn = nextMs ? Math.max(0, Math.round((nextMs - Date.now()) / 60000)) : null;
-              const lastAgo = lastRanAt ? (() => {
-                const m = Math.round((Date.now() - new Date(lastRanAt).getTime()) / 60000);
-                return m < 60 ? `${m}m ago` : m < 1440 ? `${Math.round(m/60)}h ago` : `${Math.round(m/1440)}d ago`;
-              })() : null;
-              return (
-                <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-5 flex flex-wrap items-center gap-5">
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${scanEnabled ? 'bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.6)]' : 'bg-zinc-600'}`} />
-                    <div className="min-w-0">
-                      <p className="text-sm font-bold text-zinc-100">Job Scout Agent</p>
-                      <p className="text-[11px] text-zinc-500 mt-0.5">
-                        {scanEnabled ? `Scanning every ${intervalH}h` : <span className="text-red-400">Paused</span>}
-                        {lastAgo && <> · Last run <span className="text-zinc-300">{lastAgo}</span></>}
-                        {nextIn !== null && scanEnabled && <> · Next in <span className="text-zinc-300">{nextIn < 60 ? `${nextIn}m` : `${Math.round(nextIn/60)}h`}</span></>}
-                      </p>
+          <div className="space-y-4">
+            {/* Scout Agent — unified panel */}
+            <div className="bg-zinc-950 border border-zinc-800 rounded-xl overflow-hidden">
+
+              {/* Status row */}
+              {(() => {
+                const lastRanAt = healthData?.scan_last_ran_at || healthData?.last_scan_at;
+                const intervalH = healthData?.scan_interval_hours || scanIntervalHours;
+                const nextMs = lastRanAt ? new Date(lastRanAt).getTime() + intervalH * 3600000 : null;
+                const nextIn = nextMs ? Math.max(0, Math.round((nextMs - Date.now()) / 60000)) : null;
+                const lastAgo = lastRanAt ? (() => {
+                  const m = Math.round((Date.now() - new Date(lastRanAt).getTime()) / 60000);
+                  return m < 60 ? `${m}m ago` : m < 1440 ? `${Math.round(m/60)}h ago` : `${Math.round(m/1440)}d ago`;
+                })() : null;
+                return (
+                  <div className="px-5 py-4 flex flex-wrap items-center justify-between gap-4 border-b border-zinc-800">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-2 h-2 rounded-full shrink-0 ${scanEnabled ? 'bg-green-400 shadow-[0_0_6px_rgba(74,222,128,0.7)]' : 'bg-zinc-600'}`} />
+                      <div>
+                        <p className="text-sm font-bold text-zinc-100">Job Scout Agent</p>
+                        <p className="text-[11px] text-zinc-500 mt-0.5">
+                          {scanEnabled ? `Auto-scans every ${intervalH}h` : <span className="text-amber-400">Paused — toggle below to enable</span>}
+                          {lastAgo && <> · Last run <span className="text-zinc-300">{lastAgo}</span></>}
+                          {nextIn !== null && scanEnabled && <> · Next in <span className="text-zinc-300">{nextIn < 60 ? `${nextIn}m` : `${Math.round(nextIn/60)}h`}</span></>}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-5">
+                      {[
+                        { label: 'Pending', val: scrapedJobs.length, color: scrapedJobs.length > 0 ? 'text-amber-400' : 'text-zinc-500' },
+                        { label: 'Live Jobs', val: healthData?.counts?.active ?? '—', color: 'text-green-400' },
+                        { label: 'Queries', val: scanQueries.length, color: 'text-zinc-400' },
+                      ].map(({ label, val, color }) => (
+                        <div key={label} className="text-center">
+                          <p className={`text-base font-bold tabular-nums ${color}`}>{val}</p>
+                          <p className="text-[10px] text-zinc-600 uppercase tracking-widest">{label}</p>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                  <div className="flex items-center gap-6 shrink-0">
-                    {[
-                      { label: 'Pending', val: scrapedJobs.length, color: scrapedJobs.length > 0 ? 'text-amber-400' : 'text-zinc-500' },
-                      { label: 'Live', val: healthData?.counts?.active ?? '—', color: 'text-green-400' },
-                      { label: 'Queries', val: scanQueries.length, color: 'text-zinc-400' },
-                    ].map(({ label, val, color }) => (
-                      <div key={label} className="text-center">
-                        <p className={`text-lg font-bold ${color}`}>{val}</p>
-                        <p className="text-[10px] text-zinc-600 uppercase tracking-widest">{label}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })()}
+                );
+              })()}
 
-            {/* Run scan CTA */}
-            <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-5 space-y-3">
-              <button
-                onClick={() => runSourceScan()}
-                disabled={isScanning}
-                className="w-full bg-amber-500 hover:bg-amber-400 disabled:bg-zinc-800 text-zinc-950 disabled:text-zinc-500 font-bold uppercase tracking-wide py-3 px-4 rounded-lg text-sm flex items-center justify-center gap-2 transition-colors"
-              >
-                {isScanning
-                  ? <><Activity className="w-4 h-4 animate-spin" /> Scanning {scanningLabel}…</>
-                  : <><Radar className="w-4 h-4" /> Run All {scanQueries.length} Queries Now</>}
-              </button>
-              <div className="flex gap-2">
+              {/* Run controls */}
+              <div className="px-5 py-4 border-b border-zinc-800 space-y-3">
                 <button
-                  onClick={() => setShowCustomQuery(v => !v)}
-                  className={`flex-1 text-[11px] uppercase tracking-widest transition-colors flex items-center justify-center gap-1 ${showCustomQuery === 'query' ? 'text-amber-400' : 'text-zinc-500 hover:text-zinc-300'}`}
+                  onClick={() => runSourceScan()}
+                  disabled={isScanning}
+                  className="w-full bg-amber-500 hover:bg-amber-400 disabled:bg-zinc-800 text-zinc-950 disabled:text-zinc-500 font-bold uppercase tracking-wide py-2.5 px-4 rounded-lg text-sm flex items-center justify-center gap-2 transition-colors"
                 >
-                  <Search className="w-3 h-3" /> {showCustomQuery === 'query' ? 'Hide' : 'Custom query'}
+                  {isScanning
+                    ? <><Activity className="w-4 h-4 animate-spin" /> Scanning {scanningLabel}…</>
+                    : <><Radar className="w-4 h-4" /> Run All {scanQueries.length} Queries Now</>}
                 </button>
-                <button
-                  onClick={() => setShowCustomQuery(v => v === 'url' ? false : 'url')}
-                  className={`flex-1 text-[11px] uppercase tracking-widest transition-colors flex items-center justify-center gap-1 ${showCustomQuery === 'url' ? 'text-amber-400' : 'text-zinc-500 hover:text-zinc-300'}`}
-                >
-                  <LinkIcon className="w-3 h-3" /> {showCustomQuery === 'url' ? 'Hide' : 'Import from URL'}
-                </button>
-              </div>
-              {showCustomQuery === 'query' && (
-                <div className="flex gap-2 pt-1">
-                  <input type="text" value={scanQuery} onChange={e => setScanQuery(e.target.value)} placeholder="Custom keywords…" className="flex-1 min-w-0 p-2 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 text-xs font-mono focus:border-amber-500 focus:outline-none" />
-                  <input type="text" value={scanLocation} onChange={e => setScanLocation(e.target.value)} placeholder="Location" className="w-28 p-2 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 text-xs font-mono focus:border-amber-500 focus:outline-none" />
-                  <button onClick={() => runSourceScan(scanQuery, scanLocation)} disabled={isScanning || !scanQuery.trim()} className="bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-zinc-100 font-bold py-2 px-3 rounded text-xs">Go</button>
-                </div>
-              )}
-              {showCustomQuery === 'url' && (
-                <div className="flex gap-2 pt-1">
-                  <input type="url" value={importUrl} onChange={e => setImportUrl(e.target.value)} placeholder="https://www.ziprecruiter.com/…" className="flex-1 min-w-0 p-2 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 text-xs font-mono focus:border-amber-500 focus:outline-none" onKeyDown={e => e.key === 'Enter' && importJobUrl()} />
-                  <button onClick={importJobUrl} disabled={isImportingUrl || !importUrl.trim()} className="bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-zinc-100 font-bold py-2 px-3 rounded text-xs whitespace-nowrap">{isImportingUrl ? 'Importing…' : 'Import'}</button>
-                </div>
-              )}
-            </div>
-
-            {/* Schedule + Queries side-by-side */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Schedule card */}
-              <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-5 space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2"><Cpu className="w-3.5 h-3.5 text-amber-500" /> Schedule</h3>
-                  <button onClick={() => toggleScanEnabled(!scanEnabled)} aria-pressed={scanEnabled} className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${scanEnabled ? 'bg-amber-500' : 'bg-zinc-700'}`}>
-                    <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-zinc-100 transition-transform ${scanEnabled ? 'translate-x-4.5' : 'translate-x-0.5'}`} />
+                <div className="flex gap-2">
+                  <button onClick={() => setShowCustomQuery(v => v === 'query' ? false : 'query')} className={`flex-1 text-[11px] font-bold uppercase tracking-widest py-1.5 rounded border transition-colors flex items-center justify-center gap-1 ${showCustomQuery === 'query' ? 'border-amber-500/50 text-amber-400 bg-amber-500/5' : 'border-zinc-800 text-zinc-500 hover:text-zinc-300'}`}>
+                    <Search className="w-3 h-3" /> Custom query
+                  </button>
+                  <button onClick={() => setShowCustomQuery(v => v === 'url' ? false : 'url')} className={`flex-1 text-[11px] font-bold uppercase tracking-widest py-1.5 rounded border transition-colors flex items-center justify-center gap-1 ${showCustomQuery === 'url' ? 'border-amber-500/50 text-amber-400 bg-amber-500/5' : 'border-zinc-800 text-zinc-500 hover:text-zinc-300'}`}>
+                    <LinkIcon className="w-3 h-3" /> Import URL
                   </button>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-zinc-400 shrink-0">Every</span>
-                  <select
-                    value={scanIntervalHours}
-                    onChange={e => saveScanInterval(Number(e.target.value))}
-                    className="flex-1 bg-zinc-900 border border-zinc-800 rounded px-2 py-1.5 text-xs text-zinc-100 font-mono focus:border-amber-500 focus:outline-none"
-                  >
-                    <option value={6}>6 hours</option>
-                    <option value={12}>12 hours</option>
-                    <option value={24}>24 hours (daily)</option>
-                    <option value={48}>48 hours</option>
-                    <option value={168}>1 week</option>
-                  </select>
-                </div>
-                <div className="pt-2 border-t border-zinc-800 space-y-3">
+                {showCustomQuery === 'query' && (
+                  <div className="flex gap-2">
+                    <input type="text" value={scanQuery} onChange={e => setScanQuery(e.target.value)} placeholder="Keywords…" className="flex-1 min-w-0 p-2 bg-zinc-900 border border-zinc-700 rounded text-zinc-100 text-xs font-mono focus:border-amber-500 focus:outline-none" />
+                    <input type="text" value={scanLocation} onChange={e => setScanLocation(e.target.value)} placeholder="Location" className="w-28 p-2 bg-zinc-900 border border-zinc-700 rounded text-zinc-100 text-xs font-mono focus:border-amber-500 focus:outline-none" />
+                    <button onClick={() => runSourceScan(scanQuery, scanLocation)} disabled={isScanning || !scanQuery.trim()} className="bg-amber-500/20 hover:bg-amber-500/30 disabled:opacity-40 text-amber-400 font-bold py-2 px-3 rounded text-xs border border-amber-500/30">Go</button>
+                  </div>
+                )}
+                {showCustomQuery === 'url' && (
+                  <div className="flex gap-2">
+                    <input type="url" value={importUrl} onChange={e => setImportUrl(e.target.value)} placeholder="https://www.ziprecruiter.com/…" className="flex-1 min-w-0 p-2 bg-zinc-900 border border-zinc-700 rounded text-zinc-100 text-xs font-mono focus:border-amber-500 focus:outline-none" onKeyDown={e => e.key === 'Enter' && importJobUrl()} />
+                    <button onClick={importJobUrl} disabled={isImportingUrl || !importUrl.trim()} className="bg-amber-500/20 hover:bg-amber-500/30 disabled:opacity-40 text-amber-400 font-bold py-2 px-3 rounded text-xs border border-amber-500/30 whitespace-nowrap">{isImportingUrl ? 'Importing…' : 'Import'}</button>
+                  </div>
+                )}
+              </div>
+
+              {/* Schedule + Queries in one row */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-zinc-800">
+                {/* Schedule */}
+                <div className="px-5 py-4 space-y-3">
+                  <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Schedule</p>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-zinc-400 shrink-0">Scan every</span>
+                    <select value={scanIntervalHours} onChange={e => saveScanInterval(Number(e.target.value))} className="flex-1 bg-zinc-900 border border-zinc-800 rounded px-2 py-1.5 text-xs text-zinc-100 font-mono focus:border-amber-500 focus:outline-none">
+                      <option value={6}>6 hours</option>
+                      <option value={12}>12 hours</option>
+                      <option value={24}>24 hours</option>
+                      <option value={48}>48 hours</option>
+                      <option value={168}>1 week</option>
+                    </select>
+                    <button onClick={() => toggleScanEnabled(!scanEnabled)} aria-pressed={scanEnabled} className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none shrink-0 ${scanEnabled ? 'bg-amber-500' : 'bg-zinc-700'}`}>
+                      <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-zinc-100 transition-transform ${scanEnabled ? 'translate-x-4.5' : 'translate-x-0.5'}`} />
+                    </button>
+                  </div>
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-xs font-bold text-zinc-300">Auto-publish</p>
-                      <p className="text-[10px] text-zinc-600 mt-0.5">≥92% confidence + company + apply link</p>
+                      <p className="text-xs font-bold text-zinc-300">Auto-publish ready candidates</p>
+                      <p className="text-[10px] text-zinc-600 mt-0.5">Requires title + company + apply link</p>
                     </div>
-                    <button onClick={() => toggleAutoPublish(!autoPublish)} aria-pressed={autoPublish} className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${autoPublish ? 'bg-amber-500' : 'bg-zinc-700'}`}>
+                    <button onClick={() => toggleAutoPublish(!autoPublish)} aria-pressed={autoPublish} className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none shrink-0 ${autoPublish ? 'bg-amber-500' : 'bg-zinc-700'}`}>
                       <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-zinc-100 transition-transform ${autoPublish ? 'translate-x-4.5' : 'translate-x-0.5'}`} />
                     </button>
                   </div>
                   {autoPublish && (
                     <div className="flex items-center justify-between">
-                      <p className="text-[11px] text-zinc-500">Expires</p>
+                      <p className="text-[11px] text-zinc-500">Auto-publish until</p>
                       <input type="date" value={autoPublishUntil} onChange={e => setAutoPublishUntilDate(e.target.value)} className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-300 font-mono focus:border-amber-500 focus:outline-none" />
                     </div>
                   )}
                 </div>
-              </div>
 
-              {/* Queries card */}
-              <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-5 space-y-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Search Queries</h3>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-zinc-600">Location</span>
-                    <input type="text" value={scanDefaultLocation} onChange={e => setScanDefaultLocation(e.target.value)} onBlur={e => saveLocation(e.target.value)} onKeyDown={e => e.key === 'Enter' && saveLocation(e.target.value)} className="w-24 p-1 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 text-xs font-mono focus:border-amber-500 focus:outline-none" />
-                  </div>
-                </div>
-                <div className="space-y-1.5 max-h-40 overflow-y-auto">
-                  {scanQueries.length === 0 && <p className="text-zinc-600 text-xs font-mono">No queries yet.</p>}
-                  {scanQueries.map((q, idx) => (
-                    <div key={idx} className="flex items-center gap-1.5">
-                      {editingQueryIdx === idx ? (
-                        <>
-                          <input autoFocus type="text" value={editingQueryVal} onChange={e => setEditingQueryVal(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') saveEditedQuery(idx); if (e.key === 'Escape') setEditingQueryIdx(null); }} className="flex-1 p-1 bg-zinc-900 border border-amber-500 rounded text-zinc-100 text-xs font-mono focus:outline-none" />
-                          <button onClick={() => saveEditedQuery(idx)} className="text-[10px] text-amber-400 font-bold uppercase">Save</button>
-                          <button onClick={() => setEditingQueryIdx(null)} className="text-[10px] text-zinc-600 uppercase">✕</button>
-                        </>
-                      ) : (
-                        <>
-                          <span className="flex-1 text-xs text-zinc-300 font-mono bg-zinc-900 border border-zinc-800 rounded px-2 py-1 truncate">{q}</span>
-                          <button onClick={() => { setEditingQueryIdx(idx); setEditingQueryVal(q); }} className="text-[10px] text-zinc-500 hover:text-amber-400 shrink-0">Edit</button>
-                          <button onClick={() => removeQuery(idx)} className="text-zinc-600 hover:text-red-500 shrink-0"><X className="w-3 h-3" /></button>
-                        </>
-                      )}
+                {/* Queries */}
+                <div className="px-5 py-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Search Queries</p>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-zinc-600">Location</span>
+                      <input type="text" value={scanDefaultLocation} onChange={e => setScanDefaultLocation(e.target.value)} onBlur={e => saveLocation(e.target.value)} onKeyDown={e => e.key === 'Enter' && saveLocation(e.target.value)} className="w-24 p-1 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 text-xs font-mono focus:border-amber-500 focus:outline-none" />
                     </div>
-                  ))}
-                </div>
-                <div className="flex gap-1.5 pt-1 border-t border-zinc-800">
-                  <input type="text" value={newQuery} onChange={e => setNewQuery(e.target.value)} onKeyDown={e => e.key === 'Enter' && addQuery()} placeholder="Add query…" className="flex-1 p-1.5 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 text-xs font-mono focus:border-amber-500 focus:outline-none placeholder-zinc-600" />
-                  <button onClick={addQuery} disabled={!newQuery.trim()} className="bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-zinc-100 font-bold py-1.5 px-3 rounded text-xs flex items-center gap-1"><PlusCircle className="w-3 h-3" /> Add</button>
+                  </div>
+                  <div className="space-y-1.5 max-h-36 overflow-y-auto">
+                    {scanQueries.length === 0 && <p className="text-zinc-600 text-xs font-mono">No queries configured.</p>}
+                    {scanQueries.map((q, idx) => (
+                      <div key={idx} className="flex items-center gap-1.5">
+                        {editingQueryIdx === idx ? (
+                          <>
+                            <input autoFocus type="text" value={editingQueryVal} onChange={e => setEditingQueryVal(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') saveEditedQuery(idx); if (e.key === 'Escape') setEditingQueryIdx(null); }} className="flex-1 p-1 bg-zinc-900 border border-amber-500 rounded text-zinc-100 text-xs font-mono focus:outline-none" />
+                            <button onClick={() => saveEditedQuery(idx)} className="text-[10px] text-amber-400 font-bold uppercase">Save</button>
+                            <button onClick={() => setEditingQueryIdx(null)} className="text-[10px] text-zinc-600 uppercase">✕</button>
+                          </>
+                        ) : (
+                          <>
+                            <span className="flex-1 text-xs text-zinc-300 font-mono bg-zinc-900 border border-zinc-800 rounded px-2 py-1 truncate">{q}</span>
+                            <button onClick={() => { setEditingQueryIdx(idx); setEditingQueryVal(q); }} className="text-[10px] text-zinc-500 hover:text-amber-400 shrink-0">Edit</button>
+                            <button onClick={() => removeQuery(idx)} className="text-zinc-600 hover:text-red-500 shrink-0"><X className="w-3 h-3" /></button>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex gap-1.5 pt-1 border-t border-zinc-800">
+                    <input type="text" value={newQuery} onChange={e => setNewQuery(e.target.value)} onKeyDown={e => e.key === 'Enter' && addQuery()} placeholder="Add a search term…" className="flex-1 p-1.5 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 text-xs font-mono focus:border-amber-500 focus:outline-none placeholder-zinc-600" />
+                    <button onClick={addQuery} disabled={!newQuery.trim()} className="bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-zinc-100 font-bold py-1.5 px-3 rounded text-xs flex items-center gap-1"><PlusCircle className="w-3 h-3" /> Add</button>
+                  </div>
                 </div>
               </div>
             </div>
