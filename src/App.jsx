@@ -1502,7 +1502,7 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
 
             {/* Pending review queue */}
             <div>
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center justify-between mb-1">
                 <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
                   Pending Review {scrapedJobs.length > 0 && <span className="text-amber-400">({scrapedJobs.length})</span>}
                 </h3>
@@ -1520,6 +1520,7 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
                   </select>
                 </div>
               </div>
+              <p className="text-[10px] text-zinc-600 mb-3"><span className="text-green-400 font-bold">Ready</span> = has a title, company, and an apply link. Expand a card to fill in missing fields before publishing.</p>
               {scrapedJobs.length === 0
                 ? <p className="text-zinc-600 text-xs font-mono text-center py-8">No pending candidates in the selected time window. Run a scan or expand the date range.</p>
                 : (
@@ -1549,9 +1550,7 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
                           <button onClick={() => setScrapedJobs(prev => prev.map(j => j.id === job.id ? { ...j, _expanded: !j._expanded } : j))} className="flex-1 text-left min-w-0">
                             <div className="flex flex-wrap items-center gap-2 mb-1">
                               <h4 className="text-sm font-bold text-zinc-100">{title || <span className="text-red-400 italic">No title</span>}</h4>
-                              <span title={`AI confidence score — how likely this is a real job listing (not a search results page). Green ≥80%, Amber ≥60%, Red <60%. Auto-publish threshold is set in Admin Settings.`} className={`cursor-help text-[10px] font-mono px-1.5 py-0.5 rounded ${confidence >= 80 ? 'bg-green-500/15 text-green-400' : confidence >= 60 ? 'bg-amber-500/15 text-amber-400' : 'bg-red-500/15 text-red-400'}`}>{confidence}% conf.</span>
-                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${isReady ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'}`}>{isReady ? '✓ Ready' : `✗ ${missingBlocking.join(', ')}`}</span>
-                              {missingOptional.length > 0 && <span className="text-[10px] text-zinc-500 font-mono">missing: {missingOptional.join(', ')}</span>}
+                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${isReady ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'}`}>{isReady ? '✓ Ready to publish' : `✗ Missing: ${missingBlocking.join(', ')}`}</span>
                             </div>
                             <p className="text-xs text-zinc-400">{company || <span className="text-red-400 italic">Unknown company</span>} · {[city, state].filter(Boolean).join(', ') || <span className="text-zinc-600 italic">No location</span>}</p>
                             {discoveredDate && <p className="text-[10px] text-zinc-600 mt-1">Discovered {discoveredDate}</p>}
