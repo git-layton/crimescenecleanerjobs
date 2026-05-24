@@ -11,6 +11,7 @@ export async function onRequestPost({ request, env }) {
     const result = await runDailyImport(env, {
       query: body.query || undefined,
       location: body.location || undefined,
+      autoPublish: body.autoPublish ?? undefined, // let agent.js read from DB settings if not explicit
     });
     return json({
       ...result,
