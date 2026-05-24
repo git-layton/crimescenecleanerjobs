@@ -237,7 +237,12 @@ async function routeRequest(request, env, ctx) {
   if (env.ASSETS) {
     const response = await env.ASSETS.fetch(request);
     const ct = response.headers.get('content-type') || '';
-    if (ct.includes('text/html')) return injectSiteConfig(response, env);
+    if (ct.includes('text/html')) {
+      const transformed = injectSiteConfig(response, env);
+      const headers = new Headers(transformed.headers);
+      headers.set('Cache-Control', 'no-store');
+      return new Response(transformed.body, { status: transformed.status, headers });
+    }
     return response;
   }
 

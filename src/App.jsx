@@ -8,18 +8,19 @@ import {
 
 const ADMIN_TOKEN_KEY = 'csj_admin_token';
 
-// Site config — injected by the Worker at runtime via window.SITE_CONFIG, falls back to defaults.
+// Site config — build-time env vars (VITE_*) take priority, then Worker runtime injection, then defaults.
+const _E = import.meta.env;
 const _S = (typeof window !== 'undefined' && window.SITE_CONFIG) || {};
 const SITE = {
-  name:            _S.name            || 'CrimeSceneCleanerJobs',
-  title:           _S.title           || 'CrimeSceneCleanerJobs — Find Your Next Mission',
-  tagline:         _S.tagline         || 'The premier dispatch board for biohazard remediation, trauma cleanup, and environmental hazard specialists.',
-  heroHeadline:    _S.heroHeadline    || 'Restore Order.',
-  heroSubheading:  _S.heroSubheading  || 'Find Your Next Mission.',
-  brandLabel:      _S.brandLabel      || 'The Elite Network',
-  nicheDescription:_S.nicheDescription|| 'biohazard remediation and crime scene cleanup',
-  nicheQuery:      _S.nicheQuery      || 'where can I find biohazard cleanup jobs?',
-  stripeUrl:       _S.stripeUrl       || '',
+  name:            _E.VITE_SITE_NAME            || _S.name            || 'CrimeSceneCleanerJobs',
+  title:           _E.VITE_SITE_TITLE           || _S.title           || 'CrimeSceneCleanerJobs — Find Your Next Mission',
+  tagline:         _E.VITE_SITE_TAGLINE         || _S.tagline         || 'The premier dispatch board for biohazard remediation, trauma cleanup, and environmental hazard specialists.',
+  heroHeadline:    _E.VITE_SITE_HERO_HEADLINE   || _S.heroHeadline    || 'Restore Order.',
+  heroSubheading:  _E.VITE_SITE_HERO_SUBHEADING || _S.heroSubheading  || 'Find Your Next Mission.',
+  brandLabel:      _E.VITE_SITE_BRAND_LABEL     || _S.brandLabel      || 'The Elite Network',
+  nicheDescription:_E.VITE_NICHE_DESCRIPTION    || _S.nicheDescription|| 'biohazard remediation and crime scene cleanup',
+  nicheQuery:      _E.VITE_NICHE_EXAMPLE_QUERY  || _S.nicheQuery      || 'where can I find biohazard cleanup jobs?',
+  stripeUrl:       _E.VITE_STRIPE_CHECKOUT_URL  || _S.stripeUrl       || '',
 };
 
 // --- CLOUDFLARE API CLIENT ---
