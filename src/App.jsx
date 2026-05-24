@@ -317,7 +317,7 @@ const applyInfo = (job) => {
   return { type: 'url', href: job.detail_path || `/jobs/${job.slug}`, label: 'View Posting', display: null };
 };
 
-const JobCard = ({ job, onDeleteRequest, highlight }) => {
+const JobCard = ({ job, highlight }) => {
   const [expanded, setExpanded] = useState(false);
   const rawContent = job.content || '';
   const isHtml = rawContent.trimStart().startsWith('<');
@@ -436,14 +436,6 @@ const JobCard = ({ job, onDeleteRequest, highlight }) => {
             View Posting →
           </a>
         </div>
-        {onDeleteRequest && (
-          <button
-            onClick={() => onDeleteRequest(job.id)}
-            className="text-zinc-600 hover:text-red-500 text-sm font-medium transition-colors uppercase tracking-widest text-[10px]"
-          >
-            Remove Post
-          </button>
-        )}
       </div>
     </article>
   );
@@ -2301,25 +2293,6 @@ export default function App() {
     await submitJob(newJob);
   };
 
-  const requestDeleteJob = (id) => {
-    setModal({
-      isOpen: true, title: 'Confirm Deletion',
-      message: 'Are you sure you want to permanently delete this record?',
-      type: 'danger',
-      onConfirm: async () => {
-        try {
-          await dbService.deleteJob(id);
-          await loadJobs(isAdmin);
-        } catch (error) {
-          showMessage('Delete Failed', error.message, 'info');
-        } finally {
-          setModal(prev => ({ ...prev, isOpen: false }));
-        }
-      },
-      onCancel: () => setModal(prev => ({ ...prev, isOpen: false })),
-    });
-  };
-
   return (
     <div className="min-h-screen flex flex-col bg-zinc-950 text-zinc-100 selection:bg-amber-500/30 selection:text-amber-200">
       <TacticalModal {...modal} />
@@ -2548,7 +2521,7 @@ export default function App() {
                   </div>
                 ) : (
                   filteredJobs.map(job => (
-                    <JobCard key={job.id} job={job} onDeleteRequest={isAdmin ? requestDeleteJob : undefined} highlight={job.id === recentlyAddedJobId} />
+                    <JobCard key={job.id} job={job} highlight={job.id === recentlyAddedJobId} />
                   ))
                 )}
               </section>
