@@ -11,7 +11,7 @@ export default {
     const hasDatabase = Boolean(env.DB);
     return Response.json({
       ok: hasDatabase,
-      service: 'crimescenecleanerjobs-agent',
+      service: env.SITE_NAME ? `${env.SITE_NAME}-agent` : 'niche-jobboard-agent',
       time: new Date().toISOString(),
     });
   },

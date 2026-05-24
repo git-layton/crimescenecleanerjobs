@@ -18,7 +18,7 @@ function stripHtml(html) {
 async function fetchSourceText(url) {
   const response = await fetch(url, {
     headers: {
-      'User-Agent': 'CrimeSceneCleanerJobsBot/1.0 (+https://crimescenecleanerjobs.com)',
+      'User-Agent': 'Mozilla/5.0 (compatible; NicheJobBoardBot/1.0)',
       'Accept': 'text/html,application/xhtml+xml',
     },
   });
@@ -142,7 +142,7 @@ async function crawlForJobLinks(listingUrl, sourceName) {
   try {
     const response = await fetch(listingUrl, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; JobBoardBot/1.0; +https://crimescenecleanerjobs.com)',
+        'User-Agent': 'Mozilla/5.0 (compatible; NicheJobBoardBot/1.0)',
         'Accept': 'text/html,application/xhtml+xml',
       },
     });

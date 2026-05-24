@@ -6,7 +6,7 @@ import { notifyGoogleIndexing } from '../../../../_lib/google-indexing.js';
 async function fetchSourceText(url) {
   const response = await fetch(url, {
     headers: {
-      'User-Agent': 'CrimeSceneCleanerJobsBot/1.0 (+https://crimescenecleanerjobs.com)',
+      'User-Agent': 'Mozilla/5.0 (compatible; NicheJobBoardBot/1.0)',
       'Accept': 'text/html,application/xhtml+xml',
     },
   });

@@ -2326,9 +2326,11 @@ export default function App() {
           <div className="h-1 w-full bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600" aria-hidden="true"></div>
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
             <a href="/" className="flex items-center group" aria-label={`${SITE.name} home`} onClick={(e) => { e.preventDefault(); setCurrentView('home'); }}>
-              <TriangleAlert className="w-7 h-7 text-amber-500 mr-3 group-hover:rotate-12 transition-transform" aria-hidden="true" />
+              <img src="/favicon.svg" className="w-7 h-7 mr-3 group-hover:scale-110 transition-transform" aria-hidden="true" />
               <span className="font-black text-xl tracking-tighter uppercase text-zinc-100 hidden sm:block">
-                CrimeScene<span className="text-amber-500">Cleaner</span>Jobs
+                {SITE.name.endsWith('Jobs')
+                  ? <>{SITE.name.slice(0, -4)}<span className="text-amber-500">Jobs</span></>
+                  : SITE.name}
               </span>
             </a>
             <div className="flex items-center gap-2">
