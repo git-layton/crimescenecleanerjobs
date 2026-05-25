@@ -55,6 +55,29 @@ function stripHtml(html) {
     .trim();
 }
 
+function extractUrlHints(url) {
+  try {
+    const u = new URL(url);
+    if (u.hostname.includes('ziprecruiter.com')) {
+      const parts = u.pathname.split('/').filter(Boolean);
+      if (parts[0] === 'c' && parts[1]) {
+        const company = parts[1].replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        const hints = { company };
+        const locPart = parts.find(p => p.startsWith('-in-'));
+        if (locPart) {
+          const loc = locPart.replace('-in-', '').split(',');
+          if (loc[0]) hints.city = loc[0].replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+          if (loc[1]) hints.state = loc[1].trim().toUpperCase().slice(0, 2);
+        }
+        return hints;
+      }
+    }
+  } catch { /* ignore */ }
+  return {};
+}
+
+const BLOCKED_SIGNALS = ['challenge-platform', 'cf-browser-verification', 'enable JavaScript', '__cf_chl', 'Checking your browser'];
+
 async function fetchSourcePage(url) {
   try {
     const response = await fetch(url, {
@@ -65,9 +88,21 @@ async function fetchSourcePage(url) {
       },
     });
     if (!response.ok) return { text: '', ldHints: {} };
-    const html = (await response.text()).slice(0, 200000);
+
+    const raw = await response.text();
+    const html = raw.slice(0, 60000);
+
+    if (BLOCKED_SIGNALS.some(s => html.includes(s))) return { text: '', ldHints: {} };
+
     const ld = extractJobLd(html);
-    const text = stripHtml(html).slice(0, 16000);
+    const text = html
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 12000);
+
     return { text, ldHints: jsonLdToHints(ld) };
   } catch {
     return { text: '', ldHints: {} };
@@ -405,10 +440,10 @@ export async function runDailyImport(env, options = {}) {
           };
 
           // Pass 1: fetch source page and extract JSON-LD + text in one shot.
-          // JSON-LD JobPosting (ZipRecruiter, Greenhouse, Lever, Workday, etc.) has
-          // complete structured data — use it as high-priority hints before AI parse.
+          // Also pull structured info from URL patterns (ZipRecruiter /c/Company/Job/...).
           const { text: sourceText, ldHints } = await fetchSourcePage(item.source_url);
-          const enrichedHints = { ...hints, ...ldHints };
+          const urlHints = extractUrlHints(item.source_url);
+          const enrichedHints = { ...hints, ...urlHints, ...ldHints };
 
           // Pass 2: AI parse from full page text (or fall back to snippet if page was blocked)
           const inputText = sourceText || item.snippet || item.title || '';

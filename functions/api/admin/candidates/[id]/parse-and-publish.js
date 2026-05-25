@@ -39,6 +39,33 @@ function jsonLdToHints(ld) {
   };
 }
 
+// Pull company/location from URL structure before touching AI or DB.
+// ZipRecruiter: /c/Company-Name/Job/Job-Title/-in-City,ST?jid=...
+// Indeed:       /viewjob?jk=... (no structured info, skip)
+function extractUrlHints(url) {
+  try {
+    const u = new URL(url);
+    if (u.hostname.includes('ziprecruiter.com')) {
+      const parts = u.pathname.split('/').filter(Boolean);
+      // parts[0] = 'c', parts[1] = 'Company-Name', parts[2] = 'Job', parts[3] = 'Job-Title', parts[4] = '-in-City,ST'
+      if (parts[0] === 'c' && parts[1]) {
+        const company = parts[1].replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        const hints = { company };
+        const locPart = parts.find(p => p.startsWith('-in-'));
+        if (locPart) {
+          const loc = locPart.replace('-in-', '').split(',');
+          if (loc[0]) hints.city = loc[0].replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+          if (loc[1]) hints.state = loc[1].trim().toUpperCase().slice(0, 2);
+        }
+        return hints;
+      }
+    }
+  } catch { /* ignore */ }
+  return {};
+}
+
+const BLOCKED_SIGNALS = ['challenge-platform', 'cf-browser-verification', 'enable JavaScript', '__cf_chl', 'Checking your browser'];
+
 async function fetchSourcePage(url) {
   try {
     const response = await fetch(url, {
@@ -49,16 +76,22 @@ async function fetchSourcePage(url) {
       },
     });
     if (!response.ok) return { text: '', ldHints: {} };
-    const html = (await response.text()).slice(0, 200000);
+
+    const raw = await response.text();
+    const html = raw.slice(0, 60000);
+
+    if (BLOCKED_SIGNALS.some(s => html.includes(s))) return { text: '', ldHints: {} };
+
     const ld = extractJobLd(html);
-    const text = html
-      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    const stripped = html
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
       .replace(/<[^>]+>/g, ' ')
       .replace(/\s+/g, ' ')
       .trim()
-      .slice(0, 16000);
-    return { text, ldHints: jsonLdToHints(ld) };
+      .slice(0, 12000);
+
+    return { text: stripped, ldHints: jsonLdToHints(ld) };
   } catch {
     return { text: '', ldHints: {} };
   }
@@ -69,6 +102,7 @@ export async function onRequestPost({ request, env, params }) {
   const adminProblem = requireAdmin(request, env);
   if (adminProblem) return adminProblem;
 
+  try {
   const body = await request.json().catch(() => ({}));
   const overrides = body.overrides || {};
 
@@ -80,12 +114,17 @@ export async function onRequestPost({ request, env, params }) {
   if (!sourceUrl) return problem(400, 'No source URL to fetch.');
 
   const { text: sourceText, ldHints } = await fetchSourcePage(sourceUrl);
+
+  // Extract structured hints from URL patterns before falling back to AI
+  const urlHints = extractUrlHints(sourceUrl);
+
   const hints = {
     source_url: sourceUrl,
     source_name: row.source_name,
     source_type: 'import',
     confidence: Number(row.confidence || 0),
-    // JSON-LD from page enriches hints; admin overrides win over everything
+    // URL → JSON-LD → admin overrides (each layer can fill gaps from previous)
+    ...urlHints,
     ...ldHints,
     ...overrides,
   };
@@ -113,4 +152,9 @@ export async function onRequestPost({ request, env, params }) {
   if (!indexing.error && !indexing.skipped) await updateJobIndexTimestamp(env, job.id);
 
   return json({ job, indexing });
+  } catch (err) {
+    const msg = String(err?.message || err);
+    // Validation failures are client errors, not server errors
+    return problem(msg.startsWith('Missing required') ? 422 : 500, msg);
+  }
 }
