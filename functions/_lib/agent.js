@@ -1,5 +1,5 @@
 import { parseJobText } from './ai.js';
-import { insertCandidate, insertJob } from './jobs.js';
+import { insertCandidate, insertJob, isJunkJob } from './jobs.js';
 
 function splitConfigList(value, fallback) {
   if (!value) return fallback;
@@ -457,8 +457,9 @@ export async function runDailyImport(env, options = {}) {
             description: parsed.description || item.snippet || '',
           };
 
-          // Drop anything the AI rated as very low confidence — likely not a real job listing at all
+          // Drop low-confidence results and obvious junk (search results pages, sign-in walls)
           if (Number(payload.confidence || 0) < 0.35) { summary.skipped += 1; continue; }
+          if (isJunkJob(payload)) { summary.skipped += 1; continue; }
 
           const candidate = await insertCandidate(env, {
             run_id: runId,

@@ -213,6 +213,22 @@ export function normalizeJobInput(input, options = {}) {
   };
 }
 
+// Detect search-results pages, cookie banners, and sign-in walls masquerading as jobs.
+const JUNK_TITLE_RE = /^\d[\d,+]+\s+\S.*\bjobs?\b/i;  // "37,000+ installer jobs..."
+const JUNK_PHRASES = [
+  'sign in', 'log in', 'cookie', 'privacy policy', 'javascript',
+  'hiring now - find', 'browse \d', 'search.*jobs.*get the right',
+  'join \/ sign', 'create job alert',
+];
+export function isJunkJob(job) {
+  const t = String(job.title || '');
+  if (t.length > 120) return true;
+  if (/<[a-z]/i.test(t)) return true;   // HTML tags in title
+  if (JUNK_TITLE_RE.test(t)) return true;
+  const tl = t.toLowerCase();
+  return JUNK_PHRASES.some(p => new RegExp(p, 'i').test(tl));
+}
+
 export function validateJob(job) {
   const missing = [];
   if (!job.title) missing.push('title');
@@ -326,6 +342,7 @@ export async function listJobs(env, options = {}) {
 
 export async function insertJob(env, input, options = {}) {
   const job = normalizeJobInput(input, options);
+  if (isJunkJob(job)) throw new Error('Job title looks like a search results page or junk listing. Edit the title before publishing.');
   const missing = validateJob(job);
   if (missing.length) {
     throw new Error(`Missing required field(s): ${missing.join(', ')}`);
