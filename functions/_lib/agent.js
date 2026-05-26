@@ -183,22 +183,20 @@ async function discoverWithBrave(env, query, location) {
   if (!env.BRAVE_SEARCH_API_KEY) return [];
   const loc = location && location.toLowerCase() !== 'nationwide' ? ` ${location}` : '';
 
-  // Run broad search + site-targeted searches in parallel for maximum coverage.
-  // Site-targeted queries hit Brave's index directly for individual job pages,
-  // bypassing crawler blocks on Indeed/ZipRecruiter/LinkedIn.
-  const [broad, indeed, zip, linkedin] = await Promise.allSettled([
+  // Run broad search + ATS-targeted searches in parallel.
+  // Lever, Greenhouse, and Workable serve full HTML + JSON-LD and never block bots.
+  // ZipRecruiter /c/ URLs work for URL-hint extraction even when 403 on page fetch.
+  // LinkedIn is dropped — requires auth, adds no value.
+  const searches = await Promise.allSettled([
     braveSearch(env, `${query}${loc} jobs hiring`),
-    braveSearch(env, `site:indeed.com/viewjob "${query}"`),
+    braveSearch(env, `${query}${loc} jobs -intitle:"sign in" -intitle:"login"`),
+    braveSearch(env, `site:jobs.lever.co "${query}"`),
+    braveSearch(env, `site:boards.greenhouse.io "${query}"`),
+    braveSearch(env, `site:apply.workable.com "${query}"`),
     braveSearch(env, `site:ziprecruiter.com/c/ "${query}"`),
-    braveSearch(env, `site:linkedin.com/jobs/view "${query}"`),
   ]);
 
-  return [
-    ...(broad.status === 'fulfilled' ? broad.value : []),
-    ...(indeed.status === 'fulfilled' ? indeed.value : []),
-    ...(zip.status === 'fulfilled' ? zip.value : []),
-    ...(linkedin.status === 'fulfilled' ? linkedin.value : []),
-  ];
+  return searches.flatMap(r => r.status === 'fulfilled' ? r.value : []);
 }
 
 function isSearchResultsPage(url) {
