@@ -456,7 +456,14 @@ export async function updateJobIndexTimestamp(env, id, indexedAt = new Date().to
 export function buildJobPostingJsonLd(job, siteUrl, siteName = 'CrimeSceneCleanerJobs') {
   const jobUrl = `${siteUrl}/jobs/${job.slug}`;
   const salaryUnit = /salary|year/i.test(job.paytype || '') ? 'YEAR' : 'HOUR';
-  const descriptionText = job.description || job.content || '';
+
+  // Strip HTML tags for plain-text description (required by Google Jobs)
+  const rawDesc = job.description || job.content || '';
+  const plainDesc = rawDesc.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  const location = [job.city, job.state].filter(Boolean).join(', ');
+  // Google requires description — fall back to a generated sentence if none exists
+  const descriptionText = plainDesc ||
+    `${job.title} position at ${job.company}${location ? ` in ${location}` : ''}. Apply now.`;
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'JobPosting',
