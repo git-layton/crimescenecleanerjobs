@@ -26,7 +26,7 @@ import { runDailyImport, maybeRunScheduledScan } from '../functions/_lib/agent.j
 
 function injectSiteConfig(response, env) {
   const name = env.SITE_NAME || 'CrimeSceneCleanerJobs';
-  const siteUrl = env.PUBLIC_SITE_URL || '';
+  const siteUrl = (env.PUBLIC_SITE_URL || '').replace(/\/+$/, '');
   const config = {
     name,
     title: env.SITE_TITLE || `${name} — Find Your Next Mission`,
@@ -40,7 +40,28 @@ function injectSiteConfig(response, env) {
     stripeUrl: env.STRIPE_CHECKOUT_URL || '',
     siteUrl,
   };
-  const script = `<script>window.SITE_CONFIG=${JSON.stringify(config)}</script>`;
+
+  // Dynamic WebSite JSON-LD — replaces the hardcoded CrimeSceneCleanerJobs schema
+  // in index.html so each site gets the correct identity in Google's knowledge graph.
+  const websiteJsonLd = siteUrl ? JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name,
+    url: siteUrl,
+    description: config.description,
+    publisher: { '@type': 'Organization', name, url: siteUrl },
+    potentialAction: {
+      '@type': 'SearchAction',
+      target: `${siteUrl}/?search={search_term_string}`,
+      'query-input': 'required name=search_term_string',
+    },
+  }) : null;
+
+  const configScript = `<script>window.SITE_CONFIG=${JSON.stringify(config)}</script>`;
+  const ldScript = websiteJsonLd
+    ? `<script type="application/ld+json">${websiteJsonLd}</script>`
+    : '';
+
   return new HTMLRewriter()
     .on('title', { element(el) { el.setInnerContent(config.title); } })
     .on('meta[name="description"]', { element(el) { el.setAttribute('content', config.description); } })
@@ -50,7 +71,12 @@ function injectSiteConfig(response, env) {
     .on('meta[name="twitter:title"]', { element(el) { el.setAttribute('content', config.title); } })
     .on('meta[name="twitter:description"]', { element(el) { el.setAttribute('content', config.tagline); } })
     .on('link[rel="canonical"]', { element(el) { if (siteUrl) el.setAttribute('href', siteUrl); } })
-    .on('head', { element(el) { el.append(script, { html: true }); } })
+    // Remove the hardcoded JSON-LD from index.html — we inject the correct one below
+    .on('script[type="application/ld+json"]', { element(el) { el.remove(); } })
+    .on('head', { element(el) {
+      if (ldScript) el.append(ldScript, { html: true });
+      el.append(configScript, { html: true });
+    } })
     .transform(response);
 }
 
