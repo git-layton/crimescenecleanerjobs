@@ -27,7 +27,7 @@ SITE_HERO_SUBHEADING = "Connect with top appliance retailers and white glove ser
 SITE_BRAND_LABEL = "The Installation Network"
 NICHE_DESCRIPTION = "appliance installation and white glove delivery"
 NICHE_EXAMPLE_QUERY = "where can I find appliance installer jobs?"
-STRIPE_CHECKOUT_URL = ""  # TODO: create a separate Stripe payment link for ApplianceInstallJobs
+STRIPE_CHECKOUT_URL = "https://buy.stripe.com/6oU14mbCsbzo2sOb7G24000"
 
 [[d1_databases]]
 binding = "DB"
