@@ -230,6 +230,53 @@ async function routeRequest(request, env, ctx) {
     return run(getSitemap, request, env, ctx);
   }
 
+  // Serve robots.txt dynamically so the Sitemap URL is always correct for whichever
+  // site is running (avoids the static file hardcoding crimescenecleanerjobs.com).
+  if (pathname === '/robots.txt' && method === 'GET') {
+    const siteUrl = (env.PUBLIC_SITE_URL || `${url.protocol}//${url.host}`).replace(/\/+$/, '');
+    const body = `User-agent: *
+Allow: /
+Allow: /jobs/
+Disallow: /api/
+Disallow: /post-success
+Disallow: /?edit*
+Disallow: /?search*
+Disallow: /?state=
+Disallow: /?q=
+Disallow: /?page=
+Disallow: /?sort=
+Disallow: /?tab=
+
+User-agent: GPTBot
+Allow: /
+Allow: /jobs/
+Disallow: /api/
+
+User-agent: ClaudeBot
+Allow: /
+Allow: /jobs/
+Disallow: /api/
+
+User-agent: PerplexityBot
+Allow: /
+Allow: /jobs/
+Disallow: /api/
+
+User-agent: Googlebot
+Allow: /
+Allow: /jobs/
+Disallow: /api/
+
+Sitemap: ${siteUrl}/sitemap.xml
+`;
+    return new Response(body, {
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Cache-Control': 'public, max-age=3600',
+      },
+    });
+  }
+
   if (pathname === '/terms' && method === 'GET') {
     return run(getTermsPage, request, env, ctx);
   }

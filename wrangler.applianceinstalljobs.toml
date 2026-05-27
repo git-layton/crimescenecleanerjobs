@@ -3,7 +3,7 @@ main = "workers/site.js"
 compatibility_date = "2026-05-11"
 
 [vars]
-PUBLIC_SITE_URL = ""
+PUBLIC_SITE_URL = "https://applianceinstalljobs.com"
 DEFAULT_SCAN_LOCATION = "Nationwide"
 JOB_SCAN_QUERIES = "appliance installer;appliance installation technician;white glove delivery installer;appliance service technician;appliance delivery driver;appliance repair technician"
 AUTO_PUBLISH_JOBS = "false"
