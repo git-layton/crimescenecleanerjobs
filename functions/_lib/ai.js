@@ -187,6 +187,8 @@ Return ONLY a raw JSON object. No markdown, no code fences, no explanation.`,
     company: parsed.company || fallback.company,
     city: parsed.city || fallback.city,
     state: parsed.state || fallback.state,
+    // Keep existing description if Claude returned empty (e.g. page was blocked)
+    description: parsed.description || fallback.description,
     apply_url: applyUrl,
     contact_email: parsed.contact_email || fallback.contact_email,
     contact_phone: parsed.contact_phone || fallback.contact_phone,

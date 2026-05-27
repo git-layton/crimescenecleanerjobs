@@ -508,6 +508,7 @@ const JobForm = ({ onSave, onDirectSave, onCancel, onShowMessage, onManage, init
   const [parseKey, setParseKey] = useState(0);
   const [errors, setErrors] = useState({});
   const [step, setStep] = useState(mode === 'edit' ? 2 : 1);
+  const [agreedToTerms, setAgreedToTerms] = useState(mode === 'edit');
 
   const setField = (key, val) => {
     setFormData(prev => ({ ...prev, [key]: val }));
@@ -733,13 +734,28 @@ const JobForm = ({ onSave, onDirectSave, onCancel, onShowMessage, onManage, init
         {Object.keys(errors).length > 0 && (
           <p className="text-red-400 text-sm mb-4 font-mono">⚠ Please fill in the required fields highlighted above.</p>
         )}
+        {mode !== 'edit' && (
+          <label className="flex items-start gap-3 cursor-pointer mb-4">
+            <input
+              type="checkbox"
+              checked={agreedToTerms}
+              onChange={e => setAgreedToTerms(e.target.checked)}
+              className="mt-0.5 accent-amber-500 w-4 h-4 shrink-0"
+            />
+            <span className="text-zinc-400 text-xs leading-relaxed">
+              I agree to the{' '}
+              <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-amber-500 hover:text-amber-400 underline">Terms of Service</a>
+              {' '}and confirm this is a genuine job listing for a real open position.
+            </span>
+          </label>
+        )}
         <div className="flex items-center justify-between gap-4">
           {mode === 'edit' && onManage ? (
             <button onClick={onManage} type="button" className="text-xs text-zinc-600 hover:text-red-400 transition-colors uppercase tracking-widest">Fill or Remove Listing</button>
           ) : <span />}
           <div className="flex gap-3">
             <button onClick={onCancel} className="px-6 py-2.5 rounded-md font-bold uppercase tracking-wide text-zinc-400 hover:text-zinc-100 transition-colors">Cancel</button>
-            <button onClick={() => { dbService.logEvent('submit_click'); handlePaymentAndSave(); }} disabled={isProcessing} className="px-8 py-2.5 bg-amber-500 text-zinc-950 font-bold uppercase tracking-wide rounded-md hover:bg-amber-400 transition-colors active:scale-[0.98] disabled:opacity-50">
+            <button onClick={() => { dbService.logEvent('submit_click'); handlePaymentAndSave(); }} disabled={isProcessing || !agreedToTerms} className="px-8 py-2.5 bg-amber-500 text-zinc-950 font-bold uppercase tracking-wide rounded-md hover:bg-amber-400 transition-colors active:scale-[0.98] disabled:opacity-50">
               {isProcessing ? 'Saving...' : mode === 'edit' ? 'Save Updates' : 'Post Job →'}
             </button>
           </div>
@@ -1082,6 +1098,8 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
   const [healthData, setHealthData] = useState(null);
   const [autoPublish, setAutoPublish] = useState(false);
   const [autoPublishUntil, setAutoPublishUntil] = useState('');
+  const [autoPublishThreshold, setAutoPublishThreshold] = useState(0.80);
+  const [isPublishingQueue, setIsPublishingQueue] = useState(false);
   const [scanEnabled, setScanEnabled] = useState(true);
   const [scanIntervalHours, setScanIntervalHours] = useState(24);
   const [queueAgeDays, setQueueAgeDays] = useState(1);
@@ -1098,6 +1116,7 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
   const [dbSearch, setDbSearch] = useState('');
   const [dbStatusFilter, setDbStatusFilter] = useState('all');
   const [editingJob, setEditingJob] = useState(null);
+  const [dbExpandedJobId, setDbExpandedJobId] = useState(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -1113,6 +1132,7 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
       setHealthData(health);
       setAutoPublish(settings?.auto_publish_jobs === 'true');
       setAutoPublishUntil(settings?.auto_publish_until || '');
+      setAutoPublishThreshold(Number(settings?.auto_publish_confidence_threshold ?? 0.80));
       setScanEnabled(settings?.scan_enabled !== 'false');
       setScanIntervalHours(Number(settings?.scan_interval_hours || health?.scan_interval_hours || 24));
       setScanDefaultLocation(settings?.scan_location || 'Nationwide');
@@ -1132,6 +1152,35 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
   const setAutoPublishUntilDate = async (val) => {
     setAutoPublishUntil(val);
     await dbService.updateSettings({ auto_publish_until: val }).catch(() => {});
+  };
+
+  const saveAutoPublishThreshold = async (val) => {
+    const n = Math.max(0, Math.min(1, Number(val)));
+    setAutoPublishThreshold(n);
+    await dbService.updateSettings({ auto_publish_confidence_threshold: String(n) }).catch(() => {});
+  };
+
+  const publishQueue = async () => {
+    setIsPublishingQueue(true);
+    try {
+      const result = await apiRequest('/api/admin/scan', {
+        method: 'POST', admin: true,
+        body: { publishQueueOnly: true },
+      });
+      await onRefresh?.();
+      const fresh = await dbService.listCandidates(queueAgeDays).catch(() => []);
+      setScrapedJobs(fresh);
+      onShowMessage(
+        'Queue Processed',
+        `${result.published ?? 0} job${result.published !== 1 ? 's' : ''} published from the pending queue.${result.errors?.length ? ` ${result.errors.length} failed — check console.` : ''}`,
+        'info'
+      );
+      if (result.errors?.length) console.warn('Auto-publish errors:', result.errors);
+    } catch (error) {
+      onShowMessage('Publish Failed', error.message, 'info');
+    } finally {
+      setIsPublishingQueue(false);
+    }
   };
 
   const toggleScanEnabled = async (val) => {
@@ -1431,17 +1480,69 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-xs font-bold text-zinc-300">Auto-publish ready candidates</p>
-                      <p className="text-[10px] text-zinc-600 mt-0.5">Requires title + company + apply link</p>
+                      <p className="text-[10px] text-zinc-600 mt-0.5">Needs title + company + apply link + confidence ≥ threshold</p>
                     </div>
                     <button onClick={() => toggleAutoPublish(!autoPublish)} aria-pressed={autoPublish} className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none shrink-0 ${autoPublish ? 'bg-amber-500' : 'bg-zinc-700'}`}>
                       <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-zinc-100 transition-transform ${autoPublish ? 'translate-x-4.5' : 'translate-x-0.5'}`} />
                     </button>
                   </div>
                   {autoPublish && (
-                    <div className="flex items-center justify-between">
-                      <p className="text-[11px] text-zinc-500">Auto-publish until</p>
-                      <input type="date" value={autoPublishUntil} onChange={e => setAutoPublishUntilDate(e.target.value)} className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-300 font-mono focus:border-amber-500 focus:outline-none" />
-                    </div>
+                    <>
+                      {/* Quality filter — plain-English presets instead of a raw % */}
+                      {(() => {
+                        const presets = [
+                          {
+                            value: 0.70,
+                            label: 'Most jobs',
+                            detail: 'Publishes anything that looks like a real posting, even if details are thin. Expect some noise.',
+                          },
+                          {
+                            value: 0.80,
+                            label: 'Good jobs',
+                            detail: 'Publishes listings that have a clear title, company, and apply link — the typical solid result.',
+                            recommended: true,
+                          },
+                          {
+                            value: 0.92,
+                            label: 'Best only',
+                            detail: 'Only publishes listings where the AI is very confident: full details, known company, direct apply link.',
+                          },
+                        ];
+                        const active = presets.reduce((best, p) =>
+                          Math.abs(p.value - autoPublishThreshold) < Math.abs(best.value - autoPublishThreshold) ? p : best
+                        );
+                        return (
+                          <div>
+                            <p className="text-[10px] text-zinc-500 mb-2 uppercase tracking-widest font-bold">What to publish automatically</p>
+                            <div className="flex gap-1.5">
+                              {presets.map(p => (
+                                <button
+                                  key={p.value}
+                                  type="button"
+                                  onClick={() => { setAutoPublishThreshold(p.value); saveAutoPublishThreshold(p.value); }}
+                                  className={`flex-1 py-1.5 px-2 rounded border text-[11px] font-bold uppercase tracking-wide transition-colors ${active.value === p.value ? 'bg-amber-500 border-amber-500 text-zinc-950' : 'bg-zinc-900 border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200'}`}
+                                >
+                                  {p.label}{p.recommended ? ' ★' : ''}
+                                </button>
+                              ))}
+                            </div>
+                            <p className="text-[10px] text-zinc-500 mt-1.5 leading-relaxed">{active.detail}</p>
+                          </div>
+                        );
+                      })()}
+                      <div className="flex items-center justify-between">
+                        <p className="text-[11px] text-zinc-500">Auto-publish until</p>
+                        <input type="date" value={autoPublishUntil} onChange={e => setAutoPublishUntilDate(e.target.value)} className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-300 font-mono focus:border-amber-500 focus:outline-none" />
+                      </div>
+                      <button
+                        onClick={publishQueue}
+                        disabled={isPublishingQueue}
+                        className="w-full flex items-center justify-center gap-1.5 py-1.5 bg-green-500/10 hover:bg-green-500/20 disabled:opacity-40 text-green-400 font-bold uppercase tracking-wide rounded border border-green-500/30 text-[11px] transition-colors"
+                      >
+                        <ShieldCheck className="w-3 h-3" />
+                        {isPublishingQueue ? 'Publishing…' : 'Publish Ready Jobs in Queue Now'}
+                      </button>
+                    </>
                   )}
                 </div>
 
@@ -1899,40 +2000,124 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
                 <div className="space-y-2">
                   {filtered.map(job => {
                     const statusColor = { active: 'bg-green-500/15 text-green-400', pending: 'bg-amber-500/15 text-amber-400', filled: 'bg-blue-500/15 text-blue-400' }[job.status] || 'bg-zinc-800 text-zinc-400';
+                    const isExpanded = dbExpandedJobId === job.id;
+                    const rawDesc = job.description || job.content || '';
+                    const isDescHtml = rawDesc.trimStart().startsWith('<');
                     return (
-                      <div key={job.id} className="bg-zinc-950 border border-zinc-800 p-4 rounded-lg flex justify-between items-center">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <h4 className="text-sm font-bold text-zinc-100 truncate">{job.title}</h4>
-                            <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-sm shrink-0 ${statusColor}`}>{job.status}</span>
-                          </div>
-                          <p className="text-xs text-zinc-500 font-mono">{job.company} • {[job.city, job.state].filter(Boolean).join(', ') || 'No location'}</p>
-                        </div>
-                        <div className="flex items-center gap-2 ml-3 shrink-0">
-                          <button onClick={() => setEditingJob(job)} className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 hover:text-amber-400 transition-colors">Edit</button>
-                          {job.status !== 'active' && (
-                            <button onClick={() => updateLiveJobStatus(job, 'active')} className="text-[10px] font-bold uppercase tracking-widest text-green-400 hover:text-green-300 transition-colors">Publish</button>
-                          )}
-                          {job.status === 'active' && (
-                            <button onClick={() => updateLiveJobStatus(job, 'filled')} className="text-[10px] font-bold uppercase tracking-widest text-blue-400 hover:text-blue-300 transition-colors">Fill</button>
-                          )}
-                          {job.status === 'active' && (
-                            <button onClick={() => updateLiveJobStatus(job, 'expired')} className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 hover:text-zinc-300 transition-colors">Expire</button>
-                          )}
-                          {job.status === 'pending' && (
-                            <button onClick={() => updateLiveJobStatus(job, 'rejected')} className="text-[10px] font-bold uppercase tracking-widest text-red-400 hover:text-red-300 transition-colors">Reject</button>
-                          )}
+                      <div key={job.id} className={`bg-zinc-950 border rounded-lg transition-colors ${isExpanded ? 'border-amber-500/30' : 'border-zinc-800 hover:border-zinc-700'}`}>
+                        {/* Summary row — click anywhere on left to expand */}
+                        <div className="p-4 flex justify-between items-center">
                           <button
-                            onClick={async () => {
-                              try { await dbService.deleteJob(job.id); await onRefresh?.(); }
-                              catch (error) { onShowMessage('Delete Failed', error.message, 'info'); }
-                            }}
-                            aria-label={`Delete ${job.title}`}
-                            className="text-zinc-600 hover:text-red-500 transition-colors"
+                            onClick={() => setDbExpandedJobId(isExpanded ? null : job.id)}
+                            className="flex-1 text-left min-w-0 flex items-center gap-2"
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <ChevronDown className={`w-3.5 h-3.5 text-zinc-600 shrink-0 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <h4 className="text-sm font-bold text-zinc-100 truncate">{job.title}</h4>
+                                <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-sm shrink-0 ${statusColor}`}>{job.status}</span>
+                                {!rawDesc && <span className="text-[10px] text-zinc-600 italic shrink-0">no description</span>}
+                              </div>
+                              <p className="text-xs text-zinc-500 font-mono">{job.company} • {[job.city, job.state].filter(Boolean).join(', ') || 'No location'}</p>
+                            </div>
                           </button>
+                          <div className="flex items-center gap-2 ml-3 shrink-0">
+                            <button onClick={() => setEditingJob(job)} className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 hover:text-amber-400 transition-colors">Edit</button>
+                            {job.status !== 'active' && (
+                              <button onClick={() => updateLiveJobStatus(job, 'active')} className="text-[10px] font-bold uppercase tracking-widest text-green-400 hover:text-green-300 transition-colors">Publish</button>
+                            )}
+                            {job.status === 'active' && (
+                              <button onClick={() => updateLiveJobStatus(job, 'filled')} className="text-[10px] font-bold uppercase tracking-widest text-blue-400 hover:text-blue-300 transition-colors">Fill</button>
+                            )}
+                            {job.status === 'active' && (
+                              <button onClick={() => updateLiveJobStatus(job, 'expired')} className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 hover:text-zinc-300 transition-colors">Expire</button>
+                            )}
+                            {job.status === 'pending' && (
+                              <button onClick={() => updateLiveJobStatus(job, 'rejected')} className="text-[10px] font-bold uppercase tracking-widest text-red-400 hover:text-red-300 transition-colors">Reject</button>
+                            )}
+                            <button
+                              onClick={async () => {
+                                try { await dbService.deleteJob(job.id); await onRefresh?.(); }
+                                catch (error) { onShowMessage('Delete Failed', error.message, 'info'); }
+                              }}
+                              aria-label={`Delete ${job.title}`}
+                              className="text-zinc-600 hover:text-red-500 transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         </div>
+
+                        {/* Expanded detail panel */}
+                        {isExpanded && (
+                          <div className="border-t border-zinc-800 p-4 space-y-4 text-xs">
+                            {/* Meta row */}
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                              <div>
+                                <p className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest mb-1">Pay</p>
+                                <p className="text-zinc-300 font-mono">{formatPay(job.pay_min ?? job.payrangemin, job.pay_max ?? job.payrangemax, job.pay_type || job.paytype) || '—'}</p>
+                              </div>
+                              <div>
+                                <p className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest mb-1">Type</p>
+                                <p className="text-zinc-300 font-mono">{job.category || job.employment_type || '—'}</p>
+                              </div>
+                              <div>
+                                <p className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest mb-1">Published</p>
+                                <p className="text-zinc-300 font-mono">{job.published_at ? new Date(job.published_at).toLocaleDateString() : '—'}</p>
+                              </div>
+                              <div>
+                                <p className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest mb-1">Created</p>
+                                <p className="text-zinc-300 font-mono">{job.created_at ? new Date(job.created_at).toLocaleDateString() : '—'}</p>
+                              </div>
+                            </div>
+
+                            {/* Apply / contact */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              {job.apply_url && (
+                                <div>
+                                  <p className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest mb-1">Apply URL</p>
+                                  <a href={job.apply_url} target="_blank" rel="noreferrer" className="text-amber-400 hover:text-amber-300 font-mono break-all">{job.apply_url.slice(0, 80)}{job.apply_url.length > 80 ? '…' : ''}</a>
+                                </div>
+                              )}
+                              {job.contact_email && (
+                                <div>
+                                  <p className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest mb-1">Contact Email</p>
+                                  <p className="text-zinc-300 font-mono">{job.contact_email}</p>
+                                </div>
+                              )}
+                              {job.contact_phone && (
+                                <div>
+                                  <p className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest mb-1">Contact Phone</p>
+                                  <p className="text-zinc-300 font-mono">{job.contact_phone}</p>
+                                </div>
+                              )}
+                              {job.source_url && (
+                                <div>
+                                  <p className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest mb-1">Source</p>
+                                  <a href={job.source_url} target="_blank" rel="noreferrer" className="text-zinc-400 hover:text-amber-400 font-mono break-all">{job.source_url.slice(0, 80)}{job.source_url.length > 80 ? '…' : ''}</a>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Description */}
+                            <div>
+                              <p className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest mb-2">Description</p>
+                              {rawDesc ? (
+                                isDescHtml
+                                  ? <div className="job-description text-zinc-300 text-[11px] leading-relaxed max-h-64 overflow-y-auto bg-zinc-900/50 p-3 rounded border border-zinc-800" dangerouslySetInnerHTML={{ __html: sanitizeHtml(rawDesc) }} />
+                                  : <div className="text-zinc-400 text-[11px] leading-relaxed whitespace-pre-wrap max-h-64 overflow-y-auto bg-zinc-900/50 p-3 rounded border border-zinc-800">{rawDesc}</div>
+                              ) : (
+                                <p className="text-zinc-600 italic font-mono">No description — click Edit to add one before publishing.</p>
+                              )}
+                            </div>
+
+                            {/* Quick-action footer */}
+                            <div className="flex items-center gap-3 pt-2 border-t border-zinc-800/60">
+                              <button onClick={() => { setEditingJob(job); setDbExpandedJobId(null); }} className="text-[11px] font-bold uppercase tracking-widest text-amber-400 hover:text-amber-300 transition-colors">Edit Details →</button>
+                              <a href={job.detail_path || `/jobs/${job.slug}`} target="_blank" rel="noreferrer" className="text-[11px] font-bold uppercase tracking-widest text-zinc-500 hover:text-zinc-300 transition-colors">View Live →</a>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     );
                   })}

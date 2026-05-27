@@ -21,6 +21,7 @@ import { onRequestPost as requestIndexing } from '../functions/api/admin/indexin
 import { onRequestGet as getGoogleJobsFeed } from '../functions/api/google/jobs.json.js';
 import { onRequestGet as getSitemap } from '../functions/sitemap.xml.js';
 import { onRequestGet as getJobPage } from '../functions/jobs/[slug].js';
+import { onRequestGet as getTermsPage } from '../functions/terms.js';
 import { runDailyImport, maybeRunScheduledScan } from '../functions/_lib/agent.js';
 
 function injectSiteConfig(response, env) {
@@ -227,6 +228,10 @@ async function routeRequest(request, env, ctx) {
 
   if (pathname === '/sitemap.xml' && method === 'GET') {
     return run(getSitemap, request, env, ctx);
+  }
+
+  if (pathname === '/terms' && method === 'GET') {
+    return run(getTermsPage, request, env, ctx);
   }
 
   const jobPageMatch = pathname.match(/^\/jobs\/([^/]+)$/);

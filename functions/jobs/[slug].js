@@ -43,14 +43,14 @@ export async function onRequestGet({ request, env, params }) {
 
   const siteName = env.SITE_NAME || 'CrimeSceneCleanerJobs';
   const jsonLd = buildJobPostingJsonLd(job, siteUrl, siteName);
-  const title = `${job.title} at ${job.company} | ${siteName}`;
+  const locationStr = [job.city, job.state].filter(Boolean).join(', ');
+  const title = `${job.title} at ${job.company}${locationStr ? ` in ${locationStr}` : ''} | ${siteName}`;
 
   // Strip HTML tags for plain-text meta description
   const plainDesc = (job.description || '')
     .replace(/<[^>]+>/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
-  const locationStr = [job.city, job.state].filter(Boolean).join(', ');
   const description = plainDesc.slice(0, 155) ||
     `${job.title} job at ${job.company}${locationStr ? ` in ${locationStr}` : ''}. Apply now on ${siteName}.`;
 

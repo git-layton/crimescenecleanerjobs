@@ -1,6 +1,6 @@
 import { getSiteUrl, json, problem, requireAdmin } from '../../../../_lib/http.js';
 import { parseJobText } from '../../../../_lib/ai.js';
-import { insertJob, updateJobIndexTimestamp } from '../../../../_lib/jobs.js';
+import { insertJob, updateJob, updateJobIndexTimestamp } from '../../../../_lib/jobs.js';
 import { notifyGoogleIndexing } from '../../../../_lib/google-indexing.js';
 
 function extractJobLd(html) {
@@ -123,7 +123,16 @@ export async function onRequestPost({ request, env, params }) {
     source_name: row.source_name,
     source_type: 'import',
     confidence: Number(row.confidence || 0),
-    // URL → JSON-LD → admin overrides (each layer can fill gaps from previous)
+    // Layer 1: seed with existing payload so re-parse never loses data from the first scan
+    // (if the page is now blocked or Claude returns empty, these survive as fallbacks)
+    title: existingPayload.title || '',
+    company: existingPayload.company || '',
+    city: existingPayload.city || '',
+    state: existingPayload.state || '',
+    apply_url: existingPayload.apply_url || '',
+    contact_email: existingPayload.contact_email || '',
+    contact_phone: existingPayload.contact_phone || '',
+    // Layer 2: URL structure → JSON-LD → admin overrides (each fills/wins over previous)
     ...urlHints,
     ...ldHints,
     ...overrides,
@@ -131,17 +140,29 @@ export async function onRequestPost({ request, env, params }) {
   const inputText = sourceText || existingPayload.description || existingPayload.title || '';
   const parsed = await parseJobText(env, inputText, hints);
 
-  const job = await insertJob(env, {
+  const siteUrl = getSiteUrl(env, request);
+  let job = await insertJob(env, {
+    // Layer 1: existing payload (from first scan — survives if re-parse is blocked)
+    ...existingPayload,
+    // Layer 2: fresh parse results (wins where Claude found something)
     ...parsed,
-    // Admin overrides win over everything
+    // Layer 3: admin overrides (absolute win)
     ...overrides,
     // If admin explicitly set apply_url (even to '') respect it; '' means "use alt contact, not web"
-    apply_url: 'apply_url' in overrides ? (overrides.apply_url || null) : (parsed.apply_url || sourceUrl),
+    apply_url: 'apply_url' in overrides
+      ? (overrides.apply_url || null)
+      : (parsed.apply_url || existingPayload.apply_url || sourceUrl),
     source_type: 'import',
     source_url: sourceUrl,
     source_name: row.source_name,
     status: 'active',
-  }, { defaultStatus: 'active', siteUrl: getSiteUrl(env, request) });
+  }, { defaultStatus: 'active', siteUrl });
+
+  // insertJob dedup: if source_url already existed it returns the existing job unchanged.
+  // Promote it to active if it isn't already (e.g. it was sitting as 'pending').
+  if (job && job.status !== 'active') {
+    job = await updateJob(env, job.id, { status: 'active' }, { siteUrl }) || job;
+  }
 
   const now = new Date().toISOString();
   await env.DB.prepare(

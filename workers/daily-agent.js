@@ -2,7 +2,7 @@ import { runDailyImport } from '../functions/_lib/agent.js';
 
 export default {
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(runDailyImport(env, { trigger: event.cron }));
+    ctx.waitUntil(runDailyImport(env, { trigger: 'cron' }));
   },
 
   async fetch(request, env) {

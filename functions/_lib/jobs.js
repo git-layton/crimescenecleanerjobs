@@ -342,7 +342,6 @@ export async function listJobs(env, options = {}) {
 
 export async function insertJob(env, input, options = {}) {
   const job = normalizeJobInput(input, options);
-  if (isJunkJob(job)) throw new Error('Job title looks like a search results page or junk listing. Edit the title before publishing.');
   const missing = validateJob(job);
   if (missing.length) {
     throw new Error(`Missing required field(s): ${missing.join(', ')}`);
@@ -583,12 +582,17 @@ export async function approveCandidate(env, id, options = {}) {
   const row = await env.DB.prepare('SELECT * FROM job_import_candidates WHERE id = ? LIMIT 1').bind(id).first();
   if (!row) throw new Error('Candidate not found.');
   const candidate = rowToCandidate(row);
-  const job = await insertJob(env, {
+  let job = await insertJob(env, {
     ...candidate.payload,
     status: 'active',
     source_type: candidate.payload.source_type || 'import',
     source_url: candidate.source_url,
   }, { ...options, defaultStatus: 'active' });
+  // insertJob dedup: if source_url already existed it returns the existing job unchanged.
+  // Promote it to active so approving from the queue always results in a live job.
+  if (job && job.status !== 'active') {
+    job = await updateJob(env, job.id, { status: 'active' }, { siteUrl: options.siteUrl }) || job;
+  }
   const now = new Date().toISOString();
   await env.DB.prepare('UPDATE job_import_candidates SET status = ?, reviewed_at = ? WHERE id = ?').bind('approved', now, id).run();
   return job;

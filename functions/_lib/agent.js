@@ -1,5 +1,5 @@
 import { parseJobText } from './ai.js';
-import { insertCandidate, insertJob, isJunkJob } from './jobs.js';
+import { approveCandidate, insertCandidate, isJunkJob, listCandidates, rowToCandidate } from './jobs.js';
 
 function splitConfigList(value, fallback) {
   if (!value) return fallback;
@@ -331,6 +331,51 @@ async function getSetting(env, key) {
   return row?.value ?? null;
 }
 
+// ---------------------------------------------------------------------------
+// Auto-publish: scan the full pending-candidates queue and publish anything
+// that meets the quality bar.  Called at the end of every scan run when
+// auto-publish is on, so the queue is always drained — not just new items.
+// ---------------------------------------------------------------------------
+export async function autoPublishEligibleCandidates(env, options = {}) {
+  const threshold = options.threshold ?? 0.80;
+  const limit     = options.limit    ?? 25;
+  const siteUrl   = options.siteUrl  ?? '';
+
+  // Fetch pending candidates at or above the confidence threshold
+  const rows = await env.DB.prepare(
+    `SELECT * FROM job_import_candidates
+     WHERE status = 'pending' AND confidence >= ?
+     ORDER BY confidence DESC, discovered_at ASC
+     LIMIT ?`
+  ).bind(threshold, limit).all();
+
+  let published = 0;
+  const errors = [];
+
+  for (const row of rows.results || []) {
+    const candidate = rowToCandidate(row);
+    const payload   = candidate.payload || {};
+
+    // Must have title + company + at least one apply/contact method
+    const title    = payload.title    || candidate.title    || '';
+    const company  = payload.company  || candidate.company  || '';
+    const hasApply = payload.apply_url || payload.contact_email || payload.contact_phone
+                     || candidate.source_url;
+
+    if (!title || !company || !hasApply) continue;
+
+    try {
+      // approveCandidate validates, inserts as active, and marks candidate approved
+      await approveCandidate(env, row.id, { siteUrl });
+      published++;
+    } catch (err) {
+      errors.push(`${title}: ${err.message}`);
+    }
+  }
+
+  return { published, errors };
+}
+
 export async function maybeRunScheduledScan(env) {
   const enabled = await getSetting(env, 'scan_enabled');
   if (enabled === 'false') return { skipped: true, reason: 'Scan disabled' };
@@ -380,7 +425,12 @@ export async function runDailyImport(env, options = {}) {
     const until = await getSetting(env, 'auto_publish_until');
     if (until && new Date() > new Date(until)) autoPublish = false;
   }
-  const publishThreshold = Number(env.AUTO_PUBLISH_CONFIDENCE || 0.92);
+  // Threshold: DB setting wins, then env var, then safe default of 0.80.
+  // (0.92 was too aggressive — Claude scores most real jobs 0.80–0.90.)
+  const dbThreshold = await getSetting(env, 'auto_publish_confidence_threshold');
+  const publishThreshold = dbThreshold !== null
+    ? Number(dbThreshold)
+    : Number(env.AUTO_PUBLISH_CONFIDENCE || 0.80);
   const summary = { discovered: 0, candidates: 0, published: 0, skipped: 0, errors: [] };
   const allCandidates = [];
   const runId = await createRun(env, queries.join('; '), location);
@@ -471,18 +521,24 @@ export async function runDailyImport(env, options = {}) {
             summary.candidates += 1;
             allCandidates.push(candidate);
           }
-
-          const hasApplyForPublish = payload.apply_url || payload.contact_email || payload.contact_phone;
-          const meetsRequirements = payload.company && hasApplyForPublish;
-          if (autoPublish && meetsRequirements && Number(payload.confidence || 0) >= publishThreshold) {
-            await insertJob(env, { ...payload, status: 'active' }, { defaultStatus: 'active' });
-            summary.published += 1;
-          }
         } catch (error) {
           summary.errors.push(error.message);
           summary.skipped += 1;
         }
       }
+    }
+
+    // Auto-publish phase: drain the entire pending queue (not just new items).
+    // This means enabling auto-publish in admin settings immediately publishes
+    // everything already waiting, and future scans keep the queue clear.
+    if (autoPublish) {
+      const { published: queuePublished, errors: queueErrors } =
+        await autoPublishEligibleCandidates(env, {
+          threshold: publishThreshold,
+          siteUrl: options.siteUrl || '',
+        });
+      summary.published += queuePublished;
+      summary.errors.push(...queueErrors);
     }
 
     await finishRun(env, runId, summary);
