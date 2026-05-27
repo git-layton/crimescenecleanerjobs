@@ -8,19 +8,51 @@ import {
 
 const ADMIN_TOKEN_KEY = 'csj_admin_token';
 
-// Site config — build-time env vars (VITE_*) take priority, then Worker runtime injection, then defaults.
+// Per-domain configs — used as fallback when VITE_ env vars and window.SITE_CONFIG
+// are both absent (i.e. Cloudflare Pages serving static files directly without a Worker).
+const DOMAIN_CONFIGS = {
+  'applianceinstalljobs.com': {
+    name:             'ApplianceInstallJobs',
+    title:            'ApplianceInstallJobs — Find Your Next Install',
+    description:      'ApplianceInstallJobs is the premier job board for appliance installers, installation technicians, and white glove delivery specialists. Real jobs from top retailers and service companies.',
+    tagline:          'The premier job board for appliance installation and white glove delivery professionals.',
+    heroHeadline:     'Find Your Next Install.',
+    heroSubheading:   'Connect with top appliance retailers and white glove service companies.',
+    brandLabel:       'The Installation Network',
+    nicheDescription: 'appliance installation and white glove delivery',
+    nicheQuery:       'where can I find appliance installer jobs?',
+    stripeUrl:        'https://buy.stripe.com/6oU14mbCsbzo2sOb7G24000',
+    siteUrl:          'https://applianceinstalljobs.com',
+  },
+  'crimescenecleanerjobs.com': {
+    name:             'CrimeSceneCleanerJobs',
+    title:            'CrimeSceneCleanerJobs — Find Your Next Mission',
+    description:      'CrimeSceneCleanerJobs is the premier job board for biohazard remediation, trauma scene cleanup, and environmental hazard specialists. No fluff. Just real jobs.',
+    tagline:          'The premier dispatch board for biohazard remediation, trauma cleanup, and environmental hazard specialists.',
+    heroHeadline:     'Restore Order.',
+    heroSubheading:   'Find Your Next Mission.',
+    brandLabel:       'The Elite Network',
+    nicheDescription: 'biohazard remediation and crime scene cleanup',
+    nicheQuery:       'where can I find biohazard cleanup jobs?',
+    stripeUrl:        'https://buy.stripe.com/6oU14mbCsbzo2sOb7G24000',
+    siteUrl:          'https://crimescenecleanerjobs.com',
+  },
+};
+
+// Site config priority: VITE_ build-time → Worker runtime (window.SITE_CONFIG) → domain lookup → CSJ defaults
 const _E = import.meta.env;
 const _S = (typeof window !== 'undefined' && window.SITE_CONFIG) || {};
+const _D = (typeof window !== 'undefined' && DOMAIN_CONFIGS[window.location.hostname]) || {};
 const SITE = {
-  name:            _E.VITE_SITE_NAME            || _S.name            || 'CrimeSceneCleanerJobs',
-  title:           _E.VITE_SITE_TITLE           || _S.title           || 'CrimeSceneCleanerJobs — Find Your Next Mission',
-  tagline:         _E.VITE_SITE_TAGLINE         || _S.tagline         || 'The premier dispatch board for biohazard remediation, trauma cleanup, and environmental hazard specialists.',
-  heroHeadline:    _E.VITE_SITE_HERO_HEADLINE   || _S.heroHeadline    || 'Restore Order.',
-  heroSubheading:  _E.VITE_SITE_HERO_SUBHEADING || _S.heroSubheading  || 'Find Your Next Mission.',
-  brandLabel:      _E.VITE_SITE_BRAND_LABEL     || _S.brandLabel      || 'The Elite Network',
-  nicheDescription:_E.VITE_NICHE_DESCRIPTION    || _S.nicheDescription|| 'biohazard remediation and crime scene cleanup',
-  nicheQuery:      _E.VITE_NICHE_EXAMPLE_QUERY  || _S.nicheQuery      || 'where can I find biohazard cleanup jobs?',
-  stripeUrl:       _E.VITE_STRIPE_CHECKOUT_URL  || _S.stripeUrl       || '',
+  name:            _E.VITE_SITE_NAME            || _S.name            || _D.name            || 'CrimeSceneCleanerJobs',
+  title:           _E.VITE_SITE_TITLE           || _S.title           || _D.title           || 'CrimeSceneCleanerJobs — Find Your Next Mission',
+  tagline:         _E.VITE_SITE_TAGLINE         || _S.tagline         || _D.tagline         || 'The premier dispatch board for biohazard remediation, trauma cleanup, and environmental hazard specialists.',
+  heroHeadline:    _E.VITE_SITE_HERO_HEADLINE   || _S.heroHeadline    || _D.heroHeadline    || 'Restore Order.',
+  heroSubheading:  _E.VITE_SITE_HERO_SUBHEADING || _S.heroSubheading  || _D.heroSubheading  || 'Find Your Next Mission.',
+  brandLabel:      _E.VITE_SITE_BRAND_LABEL     || _S.brandLabel      || _D.brandLabel      || 'The Elite Network',
+  nicheDescription:_E.VITE_NICHE_DESCRIPTION    || _S.nicheDescription|| _D.nicheDescription|| 'biohazard remediation and crime scene cleanup',
+  nicheQuery:      _E.VITE_NICHE_EXAMPLE_QUERY  || _S.nicheQuery      || _D.nicheQuery      || 'where can I find biohazard cleanup jobs?',
+  stripeUrl:       _E.VITE_STRIPE_CHECKOUT_URL  || _S.stripeUrl       || _D.stripeUrl       || '',
 };
 
 // --- CLOUDFLARE API CLIENT ---
