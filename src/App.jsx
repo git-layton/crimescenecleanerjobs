@@ -3,7 +3,7 @@ import {
   Clock, Briefcase, ChevronDown, ChevronUp,
   Search, PlusCircle, Building, Activity, TriangleAlert, Filter,
   Database, Radar, ShieldCheck, Download, Trash2, LogOut, Terminal, X,
-  Cpu, Target, Banknote, Navigation, ShieldAlert, Wand2, Link as LinkIcon
+  Cpu, Target, Banknote, Navigation, ShieldAlert, Wand2, Link as LinkIcon, Wrench
 } from 'lucide-react';
 
 const ADMIN_TOKEN_KEY = 'csj_admin_token';
@@ -15,10 +15,11 @@ const DOMAIN_CONFIGS = {
     name:             'ApplianceInstallJobs',
     title:            'ApplianceInstallJobs — Find Your Next Install',
     description:      'ApplianceInstallJobs is the premier job board for appliance installers, installation technicians, and white glove delivery specialists. Real jobs from top retailers and service companies.',
-    tagline:          'The premier job board for appliance installation and white glove delivery professionals.',
+    tagline:          'Real jobs from top appliance retailers and white glove service companies.',
     heroHeadline:     'Find Your Next Install.',
-    heroSubheading:   'Connect with top appliance retailers and white glove service companies.',
+    heroSubheading:   'Real jobs. Apply direct.',
     brandLabel:       'The Installation Network',
+    bgIcon:           'Wrench',
     nicheDescription: 'appliance installation and white glove delivery',
     nicheQuery:       'where can I find appliance installer jobs?',
     stripeUrl:        'https://buy.stripe.com/6oU14mbCsbzo2sOb7G24000',
@@ -32,6 +33,7 @@ const DOMAIN_CONFIGS = {
     heroHeadline:     'Restore Order.',
     heroSubheading:   'Find Your Next Mission.',
     brandLabel:       'The Elite Network',
+    bgIcon:           'ShieldAlert',
     nicheDescription: 'biohazard remediation and crime scene cleanup',
     nicheQuery:       'where can I find biohazard cleanup jobs?',
     stripeUrl:        'https://buy.stripe.com/6oU14mbCsbzo2sOb7G24000',
@@ -53,6 +55,7 @@ const SITE = {
   nicheDescription:_E.VITE_NICHE_DESCRIPTION    || _S.nicheDescription|| _D.nicheDescription|| 'biohazard remediation and crime scene cleanup',
   nicheQuery:      _E.VITE_NICHE_EXAMPLE_QUERY  || _S.nicheQuery      || _D.nicheQuery      || 'where can I find biohazard cleanup jobs?',
   stripeUrl:       _E.VITE_STRIPE_CHECKOUT_URL  || _S.stripeUrl       || _D.stripeUrl       || '',
+  bgIcon:          _S.bgIcon                   || _D.bgIcon          || 'ShieldAlert',
 };
 
 // --- CLOUDFLARE API CLIENT ---
@@ -111,7 +114,9 @@ const dbService = {
   }),
 
   listCandidates: async (ageDays = 1) => {
-    const data = await apiRequest(`/api/admin/candidates?status=pending&age_days=${ageDays}`, { admin: true });
+    // Fetch both pending (awaiting review) and published (auto-published) so the queue
+    // shows what was processed automatically, not just what's still waiting.
+    const data = await apiRequest(`/api/admin/candidates?status=pending,published&age_days=${ageDays}`, { admin: true });
     return data.candidates || [];
   },
 
@@ -1152,6 +1157,16 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
   const [selectedCandidates, setSelectedCandidates] = useState(new Set());
   const [batchProgress, setBatchProgress] = useState(null); // { total, done, errors[] } | null
 
+  // Count pending candidates that have the required fields (company + apply/contact)
+  const pendingJobs = useMemo(() => scrapedJobs.filter(j => j.status === 'pending'), [scrapedJobs]);
+  const publishedQueueJobs = useMemo(() => scrapedJobs.filter(j => j.status === 'published'), [scrapedJobs]);
+  const readyCount = useMemo(() => pendingJobs.filter(j => {
+    const p = j.payload || {};
+    const company = j.company || p.company;
+    const hasApply = p.apply_url || p.contact_email || p.contact_phone || j.source_url;
+    return company && hasApply;
+  }).length, [pendingJobs]);
+
   useEffect(() => {
     let isMounted = true;
     Promise.all([
@@ -1603,14 +1618,6 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
                         <p className="text-[11px] text-zinc-500">Auto-publish until</p>
                         <input type="date" value={autoPublishUntil} onChange={e => setAutoPublishUntilDate(e.target.value)} className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-300 font-mono focus:border-amber-500 focus:outline-none" />
                       </div>
-                      <button
-                        onClick={publishQueue}
-                        disabled={isPublishingQueue}
-                        className="w-full flex items-center justify-center gap-1.5 py-1.5 bg-green-500/10 hover:bg-green-500/20 disabled:opacity-40 text-green-400 font-bold uppercase tracking-wide rounded border border-green-500/30 text-[11px] transition-colors"
-                      >
-                        <ShieldCheck className="w-3 h-3" />
-                        {isPublishingQueue ? 'Publishing…' : 'Publish Ready Jobs in Queue Now'}
-                      </button>
                     </>
                   )}
                 </div>
@@ -1656,17 +1663,19 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
             <div>
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center gap-2">
-                  {scrapedJobs.length > 0 && (
+                  {pendingJobs.length > 0 && (
                     <input
                       type="checkbox"
                       className="w-3.5 h-3.5 accent-amber-500 cursor-pointer"
-                      checked={selectedCandidates.size === scrapedJobs.length}
-                      onChange={e => setSelectedCandidates(e.target.checked ? new Set(scrapedJobs.map(j => j.id)) : new Set())}
-                      title="Select all"
+                      checked={selectedCandidates.size === pendingJobs.length}
+                      onChange={e => setSelectedCandidates(e.target.checked ? new Set(pendingJobs.map(j => j.id)) : new Set())}
+                      title="Select all pending"
                     />
                   )}
                   <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
-                    Pending Review {scrapedJobs.length > 0 && <span className="text-amber-400">({scrapedJobs.length})</span>}
+                    Candidate Queue
+                    {pendingJobs.length > 0 && <span className="text-amber-400"> · {pendingJobs.length} pending</span>}
+                    {publishedQueueJobs.length > 0 && <span className="text-green-500"> · {publishedQueueJobs.length} published</span>}
                   </h3>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1676,6 +1685,16 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
                       className="flex items-center gap-1.5 px-2.5 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 hover:text-amber-300 rounded border border-amber-500/40 text-[11px] font-bold transition-colors"
                     >
                       <Wand2 className="w-3 h-3" /> Publish Selected ({selectedCandidates.size})
+                    </button>
+                  )}
+                  {readyCount > 0 && selectedCandidates.size === 0 && !batchProgress && (
+                    <button
+                      onClick={publishQueue}
+                      disabled={isPublishingQueue}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 bg-green-500/10 hover:bg-green-500/20 disabled:opacity-40 text-green-400 font-bold rounded border border-green-500/30 text-[11px] transition-colors"
+                    >
+                      <ShieldCheck className="w-3 h-3" />
+                      {isPublishingQueue ? 'Publishing…' : `Publish Ready (${readyCount})`}
                     </button>
                   )}
                   <span className="text-[10px] text-zinc-600 uppercase tracking-widest">Showing</span>
@@ -2721,22 +2740,28 @@ export default function App() {
           />
         ) : (
           <>
-            <section className="-mx-4 sm:-mx-6 lg:-mx-8 -mt-8 lg:-mt-12 mb-8 bg-zinc-900 border-b border-zinc-800">
-              <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 lg:py-24 relative overflow-hidden">
-                <div className="absolute top-1/2 right-0 -translate-y-1/2 translate-x-1/4 text-zinc-800/30 pointer-events-none" aria-hidden="true">
-                  <ShieldAlert className="w-[400px] h-[400px]" />
-                </div>
-                <div className="relative z-10 max-w-3xl">
-                  <span className="inline-block py-1 px-3 rounded-full bg-zinc-950 border border-zinc-800 text-amber-500 text-xs font-bold tracking-widest uppercase mb-4">{SITE.brandLabel}</span>
-                  <h1 className="text-4xl md:text-6xl font-black uppercase tracking-tighter text-zinc-100 leading-[1.1] mb-6">
-                    {SITE.heroHeadline} <br /><span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-yellow-600">{SITE.heroSubheading}</span>
-                  </h1>
-                  <p className="text-lg text-zinc-400 max-w-xl leading-relaxed font-mono">
-                    {SITE.tagline}
-                  </p>
-                </div>
-              </div>
-            </section>
+            {(() => {
+              const HERO_ICONS = { ShieldAlert, Wrench };
+              const BgIcon = HERO_ICONS[SITE.bgIcon] || ShieldAlert;
+              return (
+                <section className="-mx-4 sm:-mx-6 lg:-mx-8 -mt-8 lg:-mt-12 mb-8 bg-zinc-900 border-b border-zinc-800">
+                  <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 lg:py-24 relative overflow-hidden">
+                    <div className="absolute top-1/2 right-0 -translate-y-1/2 translate-x-1/4 text-zinc-800/30 pointer-events-none" aria-hidden="true">
+                      <BgIcon className="w-[400px] h-[400px]" />
+                    </div>
+                    <div className="relative z-10 max-w-3xl">
+                      <span className="inline-block py-1 px-3 rounded-full bg-zinc-950 border border-zinc-800 text-amber-500 text-xs font-bold tracking-widest uppercase mb-4">{SITE.brandLabel}</span>
+                      <h1 className="text-4xl md:text-6xl font-black uppercase tracking-tighter text-zinc-100 leading-[1.1] mb-4">
+                        {SITE.heroHeadline} <br /><span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-yellow-600">{SITE.heroSubheading}</span>
+                      </h1>
+                      <p className="text-base text-zinc-400 max-w-xl leading-relaxed">
+                        {SITE.tagline}
+                      </p>
+                    </div>
+                  </div>
+                </section>
+              );
+            })()}
 
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
               <div className="lg:hidden flex justify-between items-center mb-2">

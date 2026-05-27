@@ -583,9 +583,23 @@ export function rowToCandidate(row) {
 
 export async function listCandidates(env, status = 'pending', limit = 50, ageDays = 30) {
   const cutoff = new Date(Date.now() - ageDays * 86400000).toISOString();
-  const result = await env.DB.prepare(
-    'SELECT * FROM job_import_candidates WHERE status = ? AND discovered_at >= ? ORDER BY discovered_at DESC LIMIT ?'
-  ).bind(status, cutoff, limit).all();
+  const statuses = status === 'all' ? [] : status.split(',').map(s => s.trim()).filter(Boolean);
+  let result;
+  if (statuses.length === 0) {
+    // 'all' — no status filter
+    result = await env.DB.prepare(
+      'SELECT * FROM job_import_candidates WHERE discovered_at >= ? ORDER BY discovered_at DESC LIMIT ?'
+    ).bind(cutoff, limit).all();
+  } else if (statuses.length === 1) {
+    result = await env.DB.prepare(
+      'SELECT * FROM job_import_candidates WHERE status = ? AND discovered_at >= ? ORDER BY discovered_at DESC LIMIT ?'
+    ).bind(statuses[0], cutoff, limit).all();
+  } else {
+    const ph = statuses.map(() => '?').join(', ');
+    result = await env.DB.prepare(
+      `SELECT * FROM job_import_candidates WHERE status IN (${ph}) AND discovered_at >= ? ORDER BY discovered_at DESC LIMIT ?`
+    ).bind(...statuses, cutoff, limit).all();
+  }
   return (result.results || []).map(rowToCandidate);
 }
 
