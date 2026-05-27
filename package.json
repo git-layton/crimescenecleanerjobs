@@ -19,7 +19,9 @@
     "secrets:minimum": "bash scripts/set-minimum-cloudflare-secrets.sh",
     "secrets:automation": "bash scripts/set-automation-cloudflare-secrets.sh",
     "agent:deploy": "npx wrangler deploy --config wrangler.agent.toml",
-    "deploy": "npm run build && npx wrangler deploy"
+    "deploy": "npm run build && npx wrangler deploy",
+    "deploy:appliance": "npm run build && npx wrangler deploy --config wrangler.applianceinstalljobs.toml",
+    "deploy:all": "npm run build && npx wrangler deploy && npx wrangler deploy --config wrangler.applianceinstalljobs.toml"
   },
   "dependencies": {
     "lucide-react": "^1.14.0",
