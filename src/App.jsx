@@ -1117,6 +1117,8 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
   const [dbStatusFilter, setDbStatusFilter] = useState('all');
   const [editingJob, setEditingJob] = useState(null);
   const [dbExpandedJobId, setDbExpandedJobId] = useState(null);
+  const [selectedCandidates, setSelectedCandidates] = useState(new Set());
+  const [batchProgress, setBatchProgress] = useState(null); // { total, done, errors[] } | null
 
   useEffect(() => {
     let isMounted = true;
@@ -1305,6 +1307,41 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
       setScrapedJobs(prev => prev.map(j => j.id === id ? { ...j, _parsing: false } : j));
       onShowMessage('Parse Failed', error.message, 'info');
     }
+  };
+
+  const batchPublishSelected = async () => {
+    const ids = [...selectedCandidates];
+    if (!ids.length) return;
+    setSelectedCandidates(new Set());
+    setBatchProgress({ total: ids.length, done: 0, errors: [] });
+
+    let published = 0;
+    const errors = [];
+    for (const id of ids) {
+      const job = scrapedJobs.find(j => j.id === id);
+      const payload = job?.payload || {};
+      const sourceUrl = job?.source_url || payload.source_url || '';
+      const overrides = job?._overrides || {};
+      // Use same apply_url logic as the single-publish button
+      if (!overrides.apply_url && (payload.apply_url || sourceUrl)) {
+        overrides.apply_url = payload.apply_url || sourceUrl;
+      }
+      try {
+        setScrapedJobs(prev => prev.map(j => j.id === id ? { ...j, _parsing: true } : j));
+        await dbService.parseAndPublish(id, overrides);
+        setScrapedJobs(prev => prev.filter(j => j.id !== id));
+        published++;
+      } catch (err) {
+        errors.push(err.message);
+        setScrapedJobs(prev => prev.map(j => j.id === id ? { ...j, _parsing: false } : j));
+      }
+      setBatchProgress(p => ({ ...p, done: (p?.done ?? 0) + 1, errors }));
+    }
+
+    await onRefresh?.();
+    setBatchProgress(null);
+    if (published > 0) flashSuccess(`✓ ${published} job${published > 1 ? 's' : ''} added to live jobs`);
+    if (errors.length) onShowMessage('Some jobs failed', errors.join('\n'), 'info');
   };
 
   const updateLiveJobStatus = async (job, status) => {
@@ -1586,10 +1623,29 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
             {/* Pending review queue */}
             <div>
               <div className="flex items-center justify-between mb-1">
-                <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
-                  Pending Review {scrapedJobs.length > 0 && <span className="text-amber-400">({scrapedJobs.length})</span>}
-                </h3>
                 <div className="flex items-center gap-2">
+                  {scrapedJobs.length > 0 && (
+                    <input
+                      type="checkbox"
+                      className="w-3.5 h-3.5 accent-amber-500 cursor-pointer"
+                      checked={selectedCandidates.size === scrapedJobs.length}
+                      onChange={e => setSelectedCandidates(e.target.checked ? new Set(scrapedJobs.map(j => j.id)) : new Set())}
+                      title="Select all"
+                    />
+                  )}
+                  <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
+                    Pending Review {scrapedJobs.length > 0 && <span className="text-amber-400">({scrapedJobs.length})</span>}
+                  </h3>
+                </div>
+                <div className="flex items-center gap-2">
+                  {selectedCandidates.size > 0 && !batchProgress && (
+                    <button
+                      onClick={batchPublishSelected}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 hover:text-amber-300 rounded border border-amber-500/40 text-[11px] font-bold transition-colors"
+                    >
+                      <Wand2 className="w-3 h-3" /> Publish Selected ({selectedCandidates.size})
+                    </button>
+                  )}
                   <span className="text-[10px] text-zinc-600 uppercase tracking-widest">Showing</span>
                   <select
                     value={queueAgeDays}
@@ -1603,6 +1659,23 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
                   </select>
                 </div>
               </div>
+              {batchProgress && (
+                <div className="mb-3 bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-3">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[11px] font-bold text-amber-400">Publishing… {batchProgress.done}/{batchProgress.total}</span>
+                    <span className="text-[10px] text-zinc-500">{Math.round((batchProgress.done / batchProgress.total) * 100)}%</span>
+                  </div>
+                  <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-amber-500 transition-all duration-300"
+                      style={{ width: `${(batchProgress.done / batchProgress.total) * 100}%` }}
+                    />
+                  </div>
+                  {batchProgress.errors.length > 0 && (
+                    <p className="text-[10px] text-red-400 mt-1">{batchProgress.errors.length} failed</p>
+                  )}
+                </div>
+              )}
               <p className="text-[10px] text-zinc-600 mb-3"><span className="text-green-400 font-bold">Ready</span> = has a title, company, and an apply link. Expand a card to fill in missing fields before publishing.</p>
               {scrapedJobs.length === 0
                 ? <p className="text-zinc-600 text-xs font-mono text-center py-8">No pending candidates in the selected time window. Run a scan or expand the date range.</p>
@@ -1628,8 +1701,18 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
                     const isExpanded = job._expanded;
                     const discoveredDate = job.discovered_at ? new Date(job.discovered_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : null;
                     return (
-                      <div key={job.id} className={`bg-zinc-950 border rounded-lg transition-colors ${isExpanded ? 'border-amber-500/40' : 'border-zinc-800 hover:border-amber-500/20'}`}>
+                      <div key={job.id} className={`bg-zinc-950 border rounded-lg transition-colors ${isExpanded ? 'border-amber-500/40' : selectedCandidates.has(job.id) ? 'border-amber-500/30' : 'border-zinc-800 hover:border-amber-500/20'}`}>
                         <div className="p-4 flex items-start justify-between gap-3">
+                          <input
+                            type="checkbox"
+                            className="mt-1 w-3.5 h-3.5 accent-amber-500 cursor-pointer shrink-0"
+                            checked={selectedCandidates.has(job.id)}
+                            onChange={e => setSelectedCandidates(prev => {
+                              const next = new Set(prev);
+                              e.target.checked ? next.add(job.id) : next.delete(job.id);
+                              return next;
+                            })}
+                          />
                           <button onClick={() => setScrapedJobs(prev => prev.map(j => j.id === job.id ? { ...j, _expanded: !j._expanded } : j))} className="flex-1 text-left min-w-0">
                             <div className="flex flex-wrap items-center gap-2 mb-1">
                               <h4 className="text-sm font-bold text-zinc-100">{title || <span className="text-red-400 italic">No title</span>}</h4>

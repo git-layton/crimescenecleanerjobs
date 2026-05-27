@@ -342,14 +342,18 @@ export async function listJobs(env, options = {}) {
 
 export async function insertJob(env, input, options = {}) {
   const job = normalizeJobInput(input, options);
-  const missing = validateJob(job);
-  if (missing.length) {
-    throw new Error(`Missing required field(s): ${missing.join(', ')}`);
-  }
 
+  // Dedup check BEFORE validation: if a job with this source_url already exists,
+  // return it immediately. This prevents thin re-parse data (blocked page) from
+  // throwing validation errors when a clean version is already in the DB.
   if (job.source_url) {
     const existing = await env.DB.prepare(`SELECT ${JOB_COLUMNS} FROM jobs WHERE source_url = ? LIMIT 1`).bind(job.source_url).first();
     if (existing) return rowToJob(existing, options.siteUrl, options);
+  }
+
+  const missing = validateJob(job);
+  if (missing.length) {
+    throw new Error(`Missing required field(s): ${missing.join(', ')}`);
   }
 
   job.slug = await ensureUniqueSlug(env, job);
