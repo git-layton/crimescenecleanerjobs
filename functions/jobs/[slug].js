@@ -38,6 +38,12 @@ export async function onRequestGet({ request, env, params }) {
   const siteUrl = getSiteUrl(env, request);
   const job = await getJob(env, params.slug, { siteUrl });
   if (!job) {
+    // Check if the job exists but is archived/expired — return 410 Gone so Google
+    // deindexes it immediately rather than treating it as a crawl error.
+    const archived = await getJob(env, params.slug, { siteUrl, includeInactive: true });
+    if (archived && archived.status !== 'active') {
+      return html('<!doctype html><title>Job no longer available</title><meta name="robots" content="noindex"><h1>This job is no longer available</h1>', 410);
+    }
     return html('<!doctype html><title>Job not found</title><meta name="robots" content="noindex"><h1>Job not found</h1>', 404);
   }
 

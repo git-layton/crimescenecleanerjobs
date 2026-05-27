@@ -159,9 +159,10 @@ export async function onRequestPost({ request, env, params }) {
   }, { defaultStatus: 'active', siteUrl });
 
   // insertJob dedup: if source_url already existed it returns the existing job unchanged.
-  // Promote it to active if it isn't already (e.g. it was sitting as 'pending').
+  // Promote it to active and extend valid_through so it gets a fresh 45-day indexing window.
   if (job && job.status !== 'active') {
-    job = await updateJob(env, job.id, { status: 'active' }, { siteUrl }) || job;
+    const extendedThrough = new Date(Date.now() + 45 * 24 * 60 * 60 * 1000).toISOString();
+    job = await updateJob(env, job.id, { status: 'active', valid_through: extendedThrough, expires_at: extendedThrough }, { siteUrl }) || job;
   }
 
   const now = new Date().toISOString();

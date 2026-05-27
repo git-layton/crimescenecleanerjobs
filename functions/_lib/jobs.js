@@ -463,13 +463,19 @@ export function buildJobPostingJsonLd(job, siteUrl, siteName = 'CrimeSceneCleane
   // Google requires description — fall back to a generated sentence if none exists
   const descriptionText = plainDesc ||
     `${job.title} position at ${job.company}${location ? ` in ${location}` : ''}. Apply now.`;
+  // Only include validThrough if it's in the future — a past validThrough tells Google
+  // the job is expired and causes it to drop the listing from search results.
+  const rawValidThrough = job.valid_through || job.expires_at;
+  const validThroughFuture = rawValidThrough && new Date(rawValidThrough) > new Date()
+    ? rawValidThrough : undefined;
+
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'JobPosting',
     title: job.title || undefined,
     description: descriptionText || undefined,
     datePosted: job.published_at || job.created_at || undefined,
-    validThrough: job.valid_through || job.expires_at || undefined,
+    validThrough: validThroughFuture,
     employmentType: job.employment_type || undefined,
     hiringOrganization: {
       '@type': 'Organization',
@@ -490,7 +496,8 @@ export function buildJobPostingJsonLd(job, siteUrl, siteName = 'CrimeSceneCleane
       },
     },
     url: jobUrl,
-    directApply: false,
+    // directApply tells Google this is a direct application link (improves Jobs visibility)
+    directApply: Boolean(job.apply_url),
   };
 
   if (job.company_url) jsonLd.hiringOrganization.sameAs = job.company_url;
@@ -589,9 +596,10 @@ export async function approveCandidate(env, id, options = {}) {
     source_url: candidate.source_url,
   }, { ...options, defaultStatus: 'active' });
   // insertJob dedup: if source_url already existed it returns the existing job unchanged.
-  // Promote it to active so approving from the queue always results in a live job.
+  // Promote it to active and extend valid_through so it gets a fresh 45-day indexing window.
   if (job && job.status !== 'active') {
-    job = await updateJob(env, job.id, { status: 'active' }, { siteUrl: options.siteUrl }) || job;
+    const extendedThrough = new Date(Date.now() + 45 * 24 * 60 * 60 * 1000).toISOString();
+    job = await updateJob(env, job.id, { status: 'active', valid_through: extendedThrough, expires_at: extendedThrough }, { siteUrl: options.siteUrl }) || job;
   }
   const now = new Date().toISOString();
   await env.DB.prepare('UPDATE job_import_candidates SET status = ?, reviewed_at = ? WHERE id = ?').bind('approved', now, id).run();

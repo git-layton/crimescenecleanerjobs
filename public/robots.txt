@@ -5,6 +5,11 @@ Disallow: /api/
 Disallow: /post-success
 Disallow: /?edit*
 Disallow: /?search*
+Disallow: /?state=
+Disallow: /?q=
+Disallow: /?page=
+Disallow: /?sort=
+Disallow: /?tab=
 
 User-agent: GPTBot
 Allow: /
