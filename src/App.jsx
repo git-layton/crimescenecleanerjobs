@@ -47,7 +47,7 @@ const apiRequest = async (path, { method = 'GET', body, admin = false } = {}) =>
 const dbService = {
   listJobs: async ({ admin = false } = {}) => {
     const status = admin ? 'all' : 'active';
-    const data = await apiRequest(`/api/jobs?status=${status}`, { admin });
+    const data = await apiRequest(`/api/jobs?status=${status}&limit=1000`, { admin });
     return data.jobs || [];
   },
 
@@ -2430,6 +2430,8 @@ export default function App() {
   const [modal, setModal] = useState({ isOpen: false, title: '', message: '', type: 'info', onConfirm: null });
   const [search, setSearch] = useState(() => urlParams.get('search') || '');
   const [filters, setFilters] = useState({ state: 'All', city: 'All', paytype: 'All', category: 'All', company: 'All', sort: 'Newest' });
+  const [currentPage, setCurrentPage] = useState(1);
+  const JOBS_PER_PAGE = 20;
 
   const showMessage = useCallback((title, message, type = 'info') => {
     setModal({ isOpen: true, title, message, type, onConfirm: () => setModal(prev => ({ ...prev, isOpen: false })) });
@@ -2497,10 +2499,11 @@ export default function App() {
     return result;
   }, [jobs, search, filters]);
 
-  const handleFilterChange = (key, value) => setFilters(prev => ({ ...prev, [key]: value }));
+  const handleFilterChange = (key, value) => { setFilters(prev => ({ ...prev, [key]: value })); setCurrentPage(1); };
   const resetFilters = () => {
     setSearch('');
     setFilters({ state: 'All', city: 'All', paytype: 'All', category: 'All', company: 'All', sort: 'Newest' });
+    setCurrentPage(1);
   };
 
   const [adminLoginError, setAdminLoginError] = useState('');
@@ -2737,7 +2740,7 @@ export default function App() {
                           id="search-input"
                           type="search"
                           value={search}
-                          onChange={e => setSearch(e.target.value)}
+                          onChange={e => { setSearch(e.target.value); setCurrentPage(1); }}
                           placeholder="Search jobs..."
                           className="w-full pl-9 pr-3 py-2 bg-zinc-950 border border-zinc-800 rounded text-sm focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors text-zinc-200 placeholder-zinc-600"
                         />
@@ -2768,30 +2771,78 @@ export default function App() {
               </aside>
 
               <section className="lg:col-span-3" aria-label="Job listings">
-                <div className="hidden lg:flex mb-6 items-center justify-between">
-                  <p className="text-sm font-bold text-zinc-500 uppercase tracking-widest">
-                    {isLoading ? 'Syncing with database...' : `${filteredJobs.length} Active Record${filteredJobs.length === 1 ? '' : 's'}`}
-                  </p>
-                </div>
+                {(() => {
+                  const totalPages = Math.max(1, Math.ceil(filteredJobs.length / JOBS_PER_PAGE));
+                  const safePage = Math.min(currentPage, totalPages);
+                  const pageJobs = filteredJobs.slice((safePage - 1) * JOBS_PER_PAGE, safePage * JOBS_PER_PAGE);
+                  const start = filteredJobs.length === 0 ? 0 : (safePage - 1) * JOBS_PER_PAGE + 1;
+                  const end = Math.min(safePage * JOBS_PER_PAGE, filteredJobs.length);
+                  return (
+                    <>
+                      <div className="hidden lg:flex mb-6 items-center justify-between">
+                        <p className="text-sm font-bold text-zinc-500 uppercase tracking-widest">
+                          {isLoading ? 'Syncing with database...' : filteredJobs.length === 0 ? '0 Records' : `${start}–${end} of ${filteredJobs.length} Record${filteredJobs.length === 1 ? '' : 's'}`}
+                        </p>
+                        {totalPages > 1 && (
+                          <p className="text-xs text-zinc-600 font-mono">Page {safePage} of {totalPages}</p>
+                        )}
+                      </div>
 
-                {isLoading ? (
-                  <div className="flex justify-center py-20">
-                    <Activity className="w-8 h-8 text-amber-500 animate-spin" aria-label="Loading jobs" />
-                  </div>
-                ) : filteredJobs.length === 0 ? (
-                  <div className="bg-zinc-900 py-16 px-6 rounded-xl border border-zinc-800 text-center">
-                    <Activity className="w-12 h-12 text-zinc-700 mx-auto mb-4" aria-hidden="true" />
-                    <h3 className="text-xl font-bold text-zinc-300 uppercase tracking-tight mb-2">No Records Found</h3>
-                    <p className="text-zinc-500 mb-6 text-sm font-mono">Database is empty or parameters are too strict.</p>
-                    <button onClick={resetFilters} className="text-amber-500 font-bold uppercase tracking-wide text-sm hover:text-amber-400 transition-colors">
-                      Reset Scanners
-                    </button>
-                  </div>
-                ) : (
-                  filteredJobs.map(job => (
-                    <JobCard key={job.id} job={job} highlight={job.id === recentlyAddedJobId} />
-                  ))
-                )}
+                      {isLoading ? (
+                        <div className="flex justify-center py-20">
+                          <Activity className="w-8 h-8 text-amber-500 animate-spin" aria-label="Loading jobs" />
+                        </div>
+                      ) : filteredJobs.length === 0 ? (
+                        <div className="bg-zinc-900 py-16 px-6 rounded-xl border border-zinc-800 text-center">
+                          <Activity className="w-12 h-12 text-zinc-700 mx-auto mb-4" aria-hidden="true" />
+                          <h3 className="text-xl font-bold text-zinc-300 uppercase tracking-tight mb-2">No Records Found</h3>
+                          <p className="text-zinc-500 mb-6 text-sm font-mono">Database is empty or parameters are too strict.</p>
+                          <button onClick={resetFilters} className="text-amber-500 font-bold uppercase tracking-wide text-sm hover:text-amber-400 transition-colors">
+                            Reset Scanners
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          {pageJobs.map(job => (
+                            <JobCard key={job.id} job={job} highlight={job.id === recentlyAddedJobId} />
+                          ))}
+
+                          {totalPages > 1 && (
+                            <div className="flex items-center justify-between mt-8 pt-6 border-t border-zinc-800">
+                              <button
+                                onClick={() => { setCurrentPage(p => Math.max(1, p - 1)); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                                disabled={safePage === 1}
+                                className="flex items-center gap-2 px-4 py-2 bg-zinc-900 hover:bg-zinc-800 disabled:opacity-30 disabled:cursor-not-allowed border border-zinc-700 rounded text-sm font-bold text-zinc-300 transition-colors"
+                              >
+                                ← Previous
+                              </button>
+                              <div className="flex items-center gap-1">
+                                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                                  .filter(p => p === 1 || p === totalPages || Math.abs(p - safePage) <= 1)
+                                  .reduce((acc, p, idx, arr) => {
+                                    if (idx > 0 && p - arr[idx - 1] > 1) acc.push('…');
+                                    acc.push(p);
+                                    return acc;
+                                  }, [])
+                                  .map((p, i) => p === '…'
+                                    ? <span key={`ellipsis-${i}`} className="px-1 text-zinc-600 text-sm">…</span>
+                                    : <button key={p} onClick={() => { setCurrentPage(p); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className={`w-8 h-8 rounded text-sm font-bold transition-colors ${p === safePage ? 'bg-amber-500 text-zinc-950' : 'bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-400'}`}>{p}</button>
+                                  )}
+                              </div>
+                              <button
+                                onClick={() => { setCurrentPage(p => Math.min(totalPages, p + 1)); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                                disabled={safePage === totalPages}
+                                className="flex items-center gap-2 px-4 py-2 bg-zinc-900 hover:bg-zinc-800 disabled:opacity-30 disabled:cursor-not-allowed border border-zinc-700 rounded text-sm font-bold text-zinc-300 transition-colors"
+                              >
+                                Next →
+                              </button>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </>
+                  );
+                })()}
               </section>
             </div>
           </>

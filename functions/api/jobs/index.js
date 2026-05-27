@@ -14,7 +14,7 @@ export async function onRequestGet({ request, env }) {
     includeInactive,
     status,
     query: url.searchParams.get('q') || '',
-    limit: clampLimit(url.searchParams.get('limit'), 100, 500),
+    limit: clampLimit(url.searchParams.get('limit'), 100, 1000),
     siteUrl: getSiteUrl(env, request),
   });
 
