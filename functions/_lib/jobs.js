@@ -595,6 +595,9 @@ export async function approveCandidate(env, id, options = {}) {
   const candidate = rowToCandidate(row);
   let job = await insertJob(env, {
     ...candidate.payload,
+    // Fall back to source_url as apply link if the payload has no explicit apply/contact.
+    // This mirrors the parse-and-publish path so auto-publish and manual publish behave the same.
+    apply_url: candidate.payload.apply_url || candidate.source_url || null,
     status: 'active',
     source_type: candidate.payload.source_type || 'import',
     source_url: candidate.source_url,

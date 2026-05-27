@@ -1,4 +1,4 @@
-import { json, problem, readJson, requireAdmin } from '../../_lib/http.js';
+import { getSiteUrl, json, problem, readJson, requireAdmin } from '../../_lib/http.js';
 import { autoPublishEligibleCandidates, runDailyImport } from '../../_lib/agent.js';
 
 export async function onRequestPost({ request, env }) {
@@ -7,6 +7,7 @@ export async function onRequestPost({ request, env }) {
   if (adminProblem) return adminProblem;
 
   const body = await readJson(request);
+  const siteUrl = getSiteUrl(env, request);
 
   // publishQueueOnly=true: skip the expensive web scan, just drain the pending queue.
   if (body.publishQueueOnly) {
@@ -17,7 +18,7 @@ export async function onRequestPost({ request, env }) {
       const threshold = dbThreshold !== null
         ? Number(dbThreshold)
         : Number(env.AUTO_PUBLISH_CONFIDENCE || 0.80);
-      const result = await autoPublishEligibleCandidates(env, { threshold });
+      const result = await autoPublishEligibleCandidates(env, { threshold, siteUrl });
       return json({ published: result.published, errors: result.errors, queue_only: true });
     } catch (error) {
       return problem(500, error.message);
@@ -28,7 +29,8 @@ export async function onRequestPost({ request, env }) {
     const result = await runDailyImport(env, {
       query:       body.query    || undefined,
       location:    body.location || undefined,
-      autoPublish: body.autoPublish ?? undefined, // let agent.js read from DB settings if not explicit
+      autoPublish: body.autoPublish ?? undefined,
+      siteUrl,
     });
     return json({
       ...result,
