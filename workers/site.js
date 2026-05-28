@@ -38,6 +38,7 @@ function injectSiteConfig(response, env) {
     nicheDescription: env.NICHE_DESCRIPTION || name,
     nicheQuery: env.NICHE_EXAMPLE_QUERY || `where can I find ${name} jobs?`,
     stripeUrl: env.STRIPE_CHECKOUT_URL || '',
+    bgIcon: env.SITE_BG_ICON || 'ShieldAlert',
     siteUrl,
   };
 
