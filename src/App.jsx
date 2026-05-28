@@ -128,6 +128,7 @@ const dbService = {
   approveCandidate: async (id) => apiRequest(`/api/admin/candidates/${id}/approve`, { method: 'POST', admin: true }),
 
   rejectCandidate: async (id) => apiRequest(`/api/admin/candidates/${id}/reject`, { method: 'POST', admin: true }),
+  bulkRejectCandidates: async ({ ids, rejectAll, status } = {}) => apiRequest('/api/admin/candidates/bulk-reject', { method: 'POST', admin: true, body: { ids, rejectAll, status } }),
 
   parseAndPublish: async (id, overrides = {}) => apiRequest(`/api/admin/candidates/${id}/parse-and-publish`, { method: 'POST', admin: true, body: { overrides } }),
 
@@ -1695,6 +1696,25 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
                     >
                       <ShieldCheck className="w-3 h-3" />
                       {isPublishingQueue ? 'Publishing…' : `Publish Ready (${readyCount})`}
+                    </button>
+                  )}
+                  {pendingJobs.length > 0 && selectedCandidates.size === 0 && !batchProgress && (
+                    <button
+                      onClick={async () => {
+                        if (!confirm(`Reject all ${pendingJobs.length} pending candidates? This cannot be undone.`)) return;
+                        try {
+                          const r = await dbService.bulkRejectCandidates({ rejectAll: true, status: 'pending' });
+                          const fresh = await dbService.listCandidates(queueAgeDays).catch(() => []);
+                          setScrapedJobs(fresh);
+                          setSelectedCandidates(new Set());
+                          onShowMessage('Queue Cleared', `${r.rejected} candidates rejected.`, 'info');
+                        } catch (e) {
+                          onShowMessage('Error', e.message, 'danger');
+                        }
+                      }}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 font-bold rounded border border-red-500/30 text-[11px] transition-colors"
+                    >
+                      <Trash2 className="w-3 h-3" /> Reject All ({pendingJobs.length})
                     </button>
                   )}
                   <span className="text-[10px] text-zinc-600 uppercase tracking-widest">Showing</span>
