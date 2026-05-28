@@ -7,7 +7,23 @@ export async function onRequestGet({ request, env }) {
 
   const rows = await env.DB.prepare('SELECT key, value FROM site_settings').all();
   const settings = Object.fromEntries((rows.results || []).map(r => [r.key, r.value]));
-  return json({ settings });
+
+  // Expose env-var defaults for keys not yet saved in DB, so the admin panel
+  // always shows the EFFECTIVE value and never hides what scans will actually use.
+  const envDefaults = {
+    scan_queries:  env.JOB_SCAN_QUERIES   || null,
+    scan_location: env.DEFAULT_SCAN_LOCATION || null,
+  };
+  // Track which keys are coming from env (not DB) so UI can flag them
+  const fromEnv = {};
+  for (const [key, val] of Object.entries(envDefaults)) {
+    if (val && settings[key] == null) {
+      settings[key] = val;
+      fromEnv[key] = true;
+    }
+  }
+
+  return json({ settings, fromEnv });
 }
 
 export async function onRequestPatch({ request, env }) {

@@ -1145,6 +1145,7 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
   const [importUrl, setImportUrl] = useState('');
   const [isImportingUrl, setIsImportingUrl] = useState(false);
   const [scanQueries, setScanQueries] = useState([]);
+  const [scanQueriesFromEnv, setScanQueriesFromEnv] = useState(false);
   const [scanDefaultLocation, setScanDefaultLocation] = useState('Nationwide');
   const [newQuery, setNewQuery] = useState('');
   const [editingQueryIdx, setEditingQueryIdx] = useState(null);
@@ -1175,7 +1176,7 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
       dbService.getScanHistory(),
       fetch('/api/health').then(r => r.json()),
       dbService.getSettings(),
-    ]).then(([candidates, history, health, { settings }]) => {
+    ]).then(([candidates, history, health, { settings, fromEnv = {} }]) => {
       if (!isMounted) return;
       setScrapedJobs(candidates);
       setScanHistory(history.runs || []);
@@ -1188,6 +1189,7 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
       setScanDefaultLocation(settings?.scan_location || 'Nationwide');
       const raw = settings?.scan_queries || '';
       setScanQueries(raw.split(';').map(q => q.trim()).filter(Boolean));
+      setScanQueriesFromEnv(Boolean(fromEnv?.scan_queries));
     }).catch(err => console.error('Admin init failed:', err));
     return () => { isMounted = false; };
   }, []);
@@ -1625,6 +1627,15 @@ const AdminDashboard = ({ jobs, onExit, onShowMessage, onRefresh, onAddJob }) =>
 
                 {/* Queries */}
                 <div className="px-5 py-4 space-y-3">
+                  {scanQueriesFromEnv && (
+                    <div className="flex items-start gap-2 px-3 py-2 bg-amber-500/10 border border-amber-500/30 rounded-lg">
+                      <TriangleAlert className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-[11px] font-bold text-amber-400">Queries from server config</p>
+                        <p className="text-[10px] text-amber-500/80 mt-0.5">These are the default queries from your server environment — not saved here yet. Editing and saving any query will write them to the database and override the server defaults.</p>
+                      </div>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between">
                     <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Search Queries</p>
                     <div className="flex items-center gap-2">
