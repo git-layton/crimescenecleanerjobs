@@ -6,6 +6,36 @@ function splitConfigList(value, fallback) {
   return String(value).split(/\n|;/).map(item => item.trim()).filter(Boolean);
 }
 
+// Generic job-title words that appear across all niches — useless for relevance filtering.
+const GENERIC_JOB_WORDS = new Set([
+  'technician', 'specialist', 'manager', 'director', 'coordinator',
+  'associate', 'analyst', 'engineer', 'professional', 'assistant',
+  'supervisor', 'operator', 'administrator', 'representative',
+  'position', 'opening', 'hiring', 'worker', 'service',
+]);
+
+// Extract niche-specific keywords from scan query strings.
+// We keep words ≥ 7 chars that aren't in the generic list — these are the terms
+// that distinguish the niche (e.g. "biohazard", "cleanup", "appliance", "installer").
+function buildNicheKeywords(queries) {
+  const words = queries
+    .flatMap(q => q.toLowerCase().split(/[\s;,/()\-]+/))
+    .filter(w => w.length >= 7 && !GENERIC_JOB_WORDS.has(w));
+  return [...new Set(words)];
+}
+
+// Pre-screen a discovered search result BEFORE calling the AI.
+// Returns false if the item's title/snippet contains none of the niche keywords,
+// meaning Adzuna/Brave/Google probably returned an off-topic result.
+// Bare URL items (no title or snippet) are always allowed through since we
+// haven't fetched their content yet.
+function isLikelyNicheRelevant(item, nicheKeywords) {
+  const hasText = item.title || item.snippet;
+  if (!hasText || !nicheKeywords.length) return true;
+  const text = `${item.title || ''} ${item.snippet || ''}`.toLowerCase();
+  return nicheKeywords.some(kw => text.includes(kw));
+}
+
 // Extract JobPosting JSON-LD from raw HTML before stripping scripts.
 // Many job boards (ZipRecruiter, Greenhouse, Lever, Workday, Glassdoor) embed
 // complete structured job data here — far more reliable than parsing text.
@@ -453,6 +483,10 @@ export async function runDailyImport(env, options = {}) {
   const MAX_PER_RUN = 40;
   let totalProcessed = 0;
 
+  // Build niche keyword set once — used to skip clearly off-topic search results
+  // before burning AI API calls on them.
+  const nicheKeywords = buildNicheKeywords(queries);
+
   try {
     for (const query of queries) {
       if (totalProcessed >= MAX_PER_RUN) break;
@@ -473,6 +507,9 @@ export async function runDailyImport(env, options = {}) {
       for (const item of discovered) {
         if (totalProcessed >= MAX_PER_RUN) break;
         if (seenUrls.has(item.source_url)) { summary.skipped += 1; continue; }
+        // Pre-filter: skip items whose title/snippet contains no niche keywords.
+        // Bare URL items (no text yet) are always allowed through.
+        if (!isLikelyNicheRelevant(item, nicheKeywords)) { summary.skipped += 1; continue; }
         seenUrls.add(item.source_url);
         totalProcessed += 1;
         try {

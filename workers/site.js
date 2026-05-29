@@ -92,6 +92,8 @@ async function health(request, env) {
     ok: true,
     time: new Date().toISOString(),
     site_url: env.PUBLIC_SITE_URL || new URL(request.url).origin,
+    scan_queries_env: env.JOB_SCAN_QUERIES || '(not set)',
+    site_name_env: env.SITE_NAME || '(not set)',
     db_bound: Boolean(env.DB),
     admin_configured: Boolean(env.ADMIN_TOKEN),
     edit_code_pepper_configured: Boolean(env.EDIT_CODE_PEPPER),

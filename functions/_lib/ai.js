@@ -73,7 +73,7 @@ function heuristicParse(rawText, hints = {}) {
   const applyUrl = hints.apply_url || (!isHomepageUrl(url) ? url : '') || '';
 
   return {
-    title: clean(hints.title || titleLine || 'Biohazard Cleanup Technician', 160),
+    title: clean(hints.title || titleLine || '', 160),
     company: clean(hints.company || company || '', 160),
     city: clean(hints.city || cityState?.[1] || '', 80),
     state: clean(hints.state || cityState?.[2] || text.match(STATE_RE)?.[1] || '', 2).toUpperCase(),
@@ -124,7 +124,11 @@ STEP 1 — Extract these fields from the real job content only:
 - contact_email: hiring contact email if present
 - contact_phone: hiring contact phone number if present (digits + formatting only, e.g. "555-867-5309")
 - source_url, source_name: where the listing came from
-- confidence: 0.0–1.0 — how confident this is a REAL, ACTIVE job post. Score 0.8–1.0 for clear job listings from real companies with title/company/location. Score 0.5–0.8 for posts missing some details but clearly a job. Score below 0.4 ONLY if the content is not a job post at all (article, template, example, spam). IMPORTANT: do NOT lower confidence because the job seems outside the biohazard niche — relevance filtering happens separately. An "evidence technician" or "forensic cleanup" post is just as valid as "biohazard remediation technician."
+- confidence: 0.0–1.0 — COMBINED score of (1) posting quality and (2) niche relevance to the site's focus: ${env.SITE_KEYWORDS || 'the job niche'}.
+  • 0.85–1.0: Real job from a real company, directly in the niche (title/role clearly matches site keywords)
+  • 0.55–0.85: Real job, adjacent or partially relevant (related field, transferable skills, or minor details missing)
+  • 0.30–0.55: Possibly real, but weak niche relevance — or relevant but lacks company/apply info
+  • 0.0–0.30: Not a real job post (article, template, spam, search results page) OR the role is completely unrelated to the site's niche (e.g. a general IT, retail, or unrelated trade job on a specialized board). Score here even if it IS a real job posting — relevance to this site is part of the score. A well-formatted appliance repair job on a biohazard cleanup board still scores near 0.
 
 CRITICAL — to publish this job we need company + at least one of: apply_url, contact_email, contact_phone.
 - company: check "About [Company]", employer name on job board, "posted by", email domain, copyright footer, or any brand name in the listing
