@@ -537,6 +537,20 @@ export async function insertCandidate(env, candidate) {
 
   if (!payload.source_url) return null;
 
+  // Content-based dedup: prevent the same job title + company from flooding the
+  // pending queue when URL normalization doesn't catch it (e.g. same role posted
+  // on multiple job boards). Same title + same company = same opening for queue purposes.
+  if (payload.title && payload.company) {
+    const existingDup = await env.DB.prepare(
+      `SELECT id FROM job_import_candidates
+       WHERE status = 'pending'
+         AND LOWER(TRIM(title)) = LOWER(TRIM(?))
+         AND LOWER(TRIM(company)) = LOWER(TRIM(?))
+       LIMIT 1`
+    ).bind(payload.title, payload.company).first().catch(() => null);
+    if (existingDup) return null;
+  }
+
   await env.DB.prepare(
     `INSERT OR IGNORE INTO job_import_candidates (
       id, run_id, status, source_url, source_name, title, company, city, state,

@@ -6,6 +6,28 @@ function splitConfigList(value, fallback) {
   return String(value).split(/\n|;/).map(item => item.trim()).filter(Boolean);
 }
 
+// Strip rotating tracking parameters from source URLs so the same job isn't
+// re-inserted on every scan run. Adzuna rotates its `se=` attribution token
+// every API call — the job ID is entirely in the path, so we drop all query
+// params for adzuna.com URLs. For other sources we strip common UTM/ad tokens.
+function normalizeSourceUrl(url) {
+  try {
+    const u = new URL(url);
+    if (u.hostname.includes('adzuna.com')) {
+      // Canonical form: just origin + path (the ad ID is in the path)
+      return `${u.origin}${u.pathname}`;
+    }
+    for (const p of ['se', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_term',
+                      'utm_content', 'utm_id', 'fbclid', 'gclid', 'msclkid', '_ga']) {
+      u.searchParams.delete(p);
+    }
+    u.searchParams.sort();
+    return u.toString().replace(/\/+$/, '');
+  } catch {
+    return url;
+  }
+}
+
 // Generic job-title words that appear across all niches — useless for relevance filtering.
 const GENERIC_JOB_WORDS = new Set([
   'technician', 'specialist', 'manager', 'director', 'coordinator',
@@ -474,8 +496,8 @@ export async function runDailyImport(env, options = {}) {
       env.DB.prepare('SELECT source_url FROM jobs WHERE source_url IS NOT NULL AND source_url != ""').all(),
       env.DB.prepare('SELECT source_url FROM job_import_candidates WHERE discovered_at >= ?').bind(cutoff).all(),
     ]);
-    for (const r of jobRows.results || []) seenUrls.add(r.source_url);
-    for (const r of candidateRows.results || []) seenUrls.add(r.source_url);
+    for (const r of jobRows.results || []) seenUrls.add(normalizeSourceUrl(r.source_url));
+    for (const r of candidateRows.results || []) seenUrls.add(normalizeSourceUrl(r.source_url));
   } catch (_) { /* non-fatal — proceed without dedup */ }
 
   // Max new URLs to process per run — keeps wall-clock time under CF Worker limit.
@@ -506,6 +528,9 @@ export async function runDailyImport(env, options = {}) {
 
       for (const item of discovered) {
         if (totalProcessed >= MAX_PER_RUN) break;
+        // Normalize URL before dedup: strips rotating tracking params (Adzuna `se=`, UTMs, etc.)
+        // so the same job ad isn't re-processed on every scan run.
+        item.source_url = normalizeSourceUrl(item.source_url);
         if (seenUrls.has(item.source_url)) { summary.skipped += 1; continue; }
         // Pre-filter: skip items whose title/snippet contains no niche keywords.
         // Bare URL items (no text yet) are always allowed through.
