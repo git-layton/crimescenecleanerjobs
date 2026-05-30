@@ -355,6 +355,64 @@ const applyInfo = (job) => {
   return { type: 'url', href: job.detail_path || `/jobs/${job.slug}`, label: 'View Posting', display: null };
 };
 
+// Searchable multi-select dropdown filter used in the jobs sidebar.
+// - Zero selections = "All" (no filter applied)
+// - Clicking options toggles them; search box narrows the list instantly
+const MultiSelectFilter = ({ label, options, selected, onChange }) => {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const visible = options.filter(o => o.toLowerCase().includes(q.toLowerCase()));
+  const toggle = (opt) => onChange(selected.includes(opt) ? selected.filter(s => s !== opt) : [...selected, opt]);
+  const buttonLabel = selected.length === 0 ? 'All' : selected.length === 1 ? selected[0] : `${selected.length} selected`;
+
+  return (
+    <div className="relative" ref={ref}>
+      <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5">{label}</label>
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        className="w-full p-2 bg-zinc-950 border border-zinc-800 rounded text-sm text-left flex items-center justify-between gap-1 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors"
+      >
+        <span className={selected.length === 0 ? 'text-zinc-500' : 'text-zinc-200 truncate'}>{buttonLabel}</span>
+        {selected.length > 0
+          ? <X className="w-3 h-3 text-zinc-400 flex-shrink-0 hover:text-amber-400" onClick={e => { e.stopPropagation(); onChange([]); }} />
+          : <ChevronDown className="w-3 h-3 text-zinc-500 flex-shrink-0" />}
+      </button>
+      {open && (
+        <div className="absolute z-50 top-full mt-1 w-full min-w-[180px] bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl flex flex-col max-h-60">
+          <div className="p-2 border-b border-zinc-800 flex-shrink-0">
+            <input
+              autoFocus
+              value={q}
+              onChange={e => setQ(e.target.value)}
+              placeholder="Type to search…"
+              className="w-full px-2 py-1 bg-zinc-950 border border-zinc-800 rounded text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-amber-500"
+            />
+          </div>
+          <div className="overflow-y-auto flex-1">
+            {visible.length === 0 && <p className="px-3 py-2 text-xs text-zinc-600 italic">No matches</p>}
+            {visible.map(opt => (
+              <label key={opt} className="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-zinc-800 transition-colors select-none">
+                <input type="checkbox" checked={selected.includes(opt)} onChange={() => toggle(opt)} className="w-3 h-3 accent-amber-500 flex-shrink-0" />
+                <span className={`text-xs truncate ${selected.includes(opt) ? 'text-amber-400 font-medium' : 'text-zinc-300'}`}>{opt}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const JobCard = ({ job, highlight }) => {
   const [expanded, setExpanded] = useState(false);
   const rawContent = job.content || '';
@@ -1070,12 +1128,31 @@ const AdminJobEditForm = ({ job, onSave }) => {
         <input className={inputClass} value={data.company_url} onChange={f('company_url')} placeholder="https://..." />
       </div>
       <div>
+        <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1">ZIP Code</label>
+        <input className={inputClass} value={data.postal_code || ''} maxLength={10} placeholder="e.g. 90210"
+          onChange={async e => {
+            const zip = e.target.value;
+            setData(prev => ({ ...prev, postal_code: zip }));
+            if (/^\d{5}$/.test(zip)) {
+              try {
+                const res = await fetch(`https://api.zippopotam.us/us/${zip}`);
+                if (res.ok) {
+                  const d = await res.json();
+                  const p = d.places?.[0];
+                  if (p) setData(prev => ({ ...prev, postal_code: zip, city: prev.city || p['place name'], state: (!prev.state || prev.state.length > 2) ? p['state abbreviation'] : prev.state }));
+                }
+              } catch {}
+            }
+          }}
+        />
+      </div>
+      <div>
         <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1">City</label>
         <input className={inputClass} value={data.city} onChange={f('city')} />
       </div>
       <div>
         <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1">State</label>
-        <input className={inputClass} value={data.state} onChange={f('state')} maxLength={2} />
+        <input className={inputClass} value={data.state} onChange={f('state')} maxLength={2} placeholder="e.g. CA" />
       </div>
       <div>
         <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1">Apply URL</label>
@@ -2511,7 +2588,7 @@ export default function App() {
   const [postedJob, setPostedJob] = useState(null);
   const [modal, setModal] = useState({ isOpen: false, title: '', message: '', type: 'info', onConfirm: null });
   const [search, setSearch] = useState(() => urlParams.get('search') || '');
-  const [filters, setFilters] = useState({ state: 'All', city: 'All', paytype: 'All', category: 'All', company: 'All', sort: 'Newest' });
+  const [filters, setFilters] = useState({ states: [], cities: [], paytypes: [], categories: [], companies: [], sort: 'Newest' });
   const [currentPage, setCurrentPage] = useState(1);
   const JOBS_PER_PAGE = 20;
 
@@ -2564,11 +2641,11 @@ export default function App() {
         const text = `${job.title} ${job.company} ${job.city} ${job.state} ${job.content}`.toLowerCase();
         if (!text.includes(q)) return false;
       }
-      if (filters.state !== 'All' && job.state !== filters.state) return false;
-      if (filters.city !== 'All' && job.city !== filters.city) return false;
-      if (filters.paytype !== 'All' && job.paytype !== filters.paytype) return false;
-      if (filters.category !== 'All' && job.category !== filters.category) return false;
-      if (filters.company !== 'All' && job.company !== filters.company) return false;
+      if (filters.states.length > 0 && !filters.states.includes(job.state)) return false;
+      if (filters.cities.length > 0 && !filters.cities.includes(job.city)) return false;
+      if (filters.paytypes.length > 0 && !filters.paytypes.includes(job.paytype)) return false;
+      if (filters.categories.length > 0 && !filters.categories.includes(job.category)) return false;
+      if (filters.companies.length > 0 && !filters.companies.includes(job.company)) return false;
       return true;
     });
     result.sort((a, b) => {
@@ -2584,7 +2661,7 @@ export default function App() {
   const handleFilterChange = (key, value) => { setFilters(prev => ({ ...prev, [key]: value })); setCurrentPage(1); };
   const resetFilters = () => {
     setSearch('');
-    setFilters({ state: 'All', city: 'All', paytype: 'All', category: 'All', company: 'All', sort: 'Newest' });
+    setFilters({ states: [], cities: [], paytypes: [], categories: [], companies: [], sort: 'Newest' });
     setCurrentPage(1);
   };
 
@@ -2834,26 +2911,23 @@ export default function App() {
                         />
                       </div>
                     </div>
-                    {[
-                      { label: 'Sort By', key: 'sort', opts: ['Newest', 'Oldest', 'High to Low', 'Low to High'] },
-                      { label: 'State', key: 'state', opts: ['All', ...options.states] },
-                      { label: 'City', key: 'city', opts: ['All', ...options.cities] },
-                      { label: 'Pay Type', key: 'paytype', opts: ['All', ...options.paytypes] },
-                      { label: 'Job Type', key: 'category', opts: ['All', ...options.categories] },
-                      { label: 'Company', key: 'company', opts: ['All', ...options.companies] },
-                    ].map(f => (
-                      <div key={f.key}>
-                        <label htmlFor={`filter-${f.key}`} className="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5">{f.label}</label>
-                        <select
-                          id={`filter-${f.key}`}
-                          value={filters[f.key]}
-                          onChange={(e) => handleFilterChange(f.key, e.target.value)}
-                          className="w-full p-2 bg-zinc-950 border border-zinc-800 rounded text-sm focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors text-zinc-200 appearance-none"
-                        >
-                          {f.opts.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                        </select>
-                      </div>
-                    ))}
+                    {/* Sort — single select, no multi needed */}
+                    <div>
+                      <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5">Sort By</label>
+                      <select
+                        value={filters.sort}
+                        onChange={e => handleFilterChange('sort', e.target.value)}
+                        className="w-full p-2 bg-zinc-950 border border-zinc-800 rounded text-sm focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors text-zinc-200 appearance-none"
+                      >
+                        {['Newest', 'Oldest', 'High to Low', 'Low to High'].map(o => <option key={o}>{o}</option>)}
+                      </select>
+                    </div>
+                    {/* Multi-select searchable filters */}
+                    <MultiSelectFilter label="State" options={options.states} selected={filters.states} onChange={v => handleFilterChange('states', v)} />
+                    <MultiSelectFilter label="City" options={options.cities} selected={filters.cities} onChange={v => handleFilterChange('cities', v)} />
+                    <MultiSelectFilter label="Pay Type" options={options.paytypes} selected={filters.paytypes} onChange={v => handleFilterChange('paytypes', v)} />
+                    <MultiSelectFilter label="Job Type" options={options.categories} selected={filters.categories} onChange={v => handleFilterChange('categories', v)} />
+                    <MultiSelectFilter label="Company" options={options.companies} selected={filters.companies} onChange={v => handleFilterChange('companies', v)} />
                   </div>
                 </div>
               </aside>
