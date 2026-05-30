@@ -100,6 +100,7 @@ async function health(request, env) {
     email_configured: Boolean(env.RESEND_API_KEY && env.FROM_EMAIL),
     ai_configured: Boolean(env.ANTHROPIC_API_KEY),
     google_search_configured: Boolean(env.GOOGLE_SEARCH_API_KEY && env.GOOGLE_SEARCH_CX),
+    google_indexing_configured: Boolean(env.GOOGLE_INDEXING_ENABLED === 'true' && env.GOOGLE_CLIENT_EMAIL && env.GOOGLE_PRIVATE_KEY),
     brave_search_configured: Boolean(env.BRAVE_SEARCH_API_KEY),
     adzuna_configured: Boolean(env.ADZUNA_APP_ID && env.ADZUNA_APP_KEY),
     counts: null,

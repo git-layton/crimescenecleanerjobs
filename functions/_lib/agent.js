@@ -1,5 +1,6 @@
 import { parseJobText } from './ai.js';
-import { approveCandidate, insertCandidate, isJunkJob, listCandidates, rowToCandidate } from './jobs.js';
+import { approveCandidate, insertCandidate, isJunkJob, listCandidates, rowToCandidate, updateJobIndexTimestamp } from './jobs.js';
+import { notifyGoogleIndexing } from './google-indexing.js';
 
 function splitConfigList(value, fallback) {
   if (!value) return fallback;
@@ -418,8 +419,15 @@ export async function autoPublishEligibleCandidates(env, options = {}) {
 
     try {
       // approveCandidate validates, inserts as active, and marks candidate approved
-      await approveCandidate(env, row.id, { siteUrl });
+      const job = await approveCandidate(env, row.id, { siteUrl });
       published++;
+      // Notify Google immediately so the job page gets indexed quickly
+      if (job?.detail_url) {
+        const indexing = await notifyGoogleIndexing(env, job.detail_url, 'URL_UPDATED').catch(() => null);
+        if (indexing && !indexing.error && !indexing.skipped) {
+          await updateJobIndexTimestamp(env, job.id).catch(() => null);
+        }
+      }
     } catch (err) {
       errors.push(`${title}: ${err.message}`);
     }

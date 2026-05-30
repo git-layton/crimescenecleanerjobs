@@ -47,7 +47,9 @@ export async function onRequestGet({ request, env, params }) {
     return html('<!doctype html><title>Job not found</title><meta name="robots" content="noindex"><h1>Job not found</h1>', 404);
   }
 
-  const siteName = env.SITE_NAME || 'CrimeSceneCleanerJobs';
+  const siteName = env.SITE_NAME || 'NicheJobBoard';
+  // Brand accent color — override via SITE_ACCENT_COLOR env var (hex, e.g. #0ea5e9)
+  const accent = env.SITE_ACCENT_COLOR || '#f59e0b';
   const jsonLd = buildJobPostingJsonLd(job, siteUrl, siteName);
   const locationStr = [job.city, job.state].filter(Boolean).join(', ');
   const title = `${job.title} at ${job.company}${locationStr ? ` in ${locationStr}` : ''} | ${siteName}`;
@@ -85,13 +87,13 @@ export async function onRequestGet({ request, env, params }) {
       :root { color-scheme: dark; font-family: Arial, sans-serif; background: #09090b; color: #f4f4f5; }
       body { margin: 0; background: #09090b; }
       main { max-width: 820px; margin: 0 auto; padding: 42px 20px 64px; }
-      a { color: #f59e0b; }
-      .eyebrow { color: #f59e0b; font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+      a { color: ${accent}; }
+      .eyebrow { color: ${accent}; font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
       h1 { font-size: clamp(32px, 5vw, 54px); line-height: 1.05; margin: 12px 0 18px; letter-spacing: -0.03em; }
       .meta { color: #a1a1aa; display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 28px; }
       .panel { border: 1px solid #27272a; border-radius: 8px; background: #18181b; padding: 22px; margin: 22px 0; }
       .description { line-height: 1.65; color: #d4d4d8; }
-      .description h2 { font-size: 0.7rem; font-weight: 700; margin: 1.75rem 0 0.6rem; color: #f59e0b; text-transform: uppercase; letter-spacing: 0.1em; padding-top: 1rem; border-top: 1px solid #27272a; }
+      .description h2 { font-size: 0.7rem; font-weight: 700; margin: 1.75rem 0 0.6rem; color: ${accent}; text-transform: uppercase; letter-spacing: 0.1em; padding-top: 1rem; border-top: 1px solid #27272a; }
       .description h2:first-child { margin-top: 0; padding-top: 0; border-top: none; }
       .description h3 { font-size: 0.95rem; font-weight: 700; margin: 1rem 0 0.35rem; color: #e4e4e7; }
       .description ul { list-style: disc; padding-left: 1.5rem; margin: 0.25rem 0 1rem; }
@@ -99,7 +101,7 @@ export async function onRequestGet({ request, env, params }) {
       .description li { margin: 0.35rem 0; color: #d4d4d8; line-height: 1.5; }
       .description p { margin: 0 0 0.75rem; color: #d4d4d8; }
       .description strong { color: #f4f4f5; font-weight: 700; }
-      .button { display: inline-block; background: #f59e0b; color: #09090b; text-decoration: none; padding: 13px 20px; border-radius: 6px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
+      .button { display: inline-block; background: ${accent}; color: #09090b; text-decoration: none; padding: 13px 20px; border-radius: 6px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
     </style>
   </head>
   <body>
