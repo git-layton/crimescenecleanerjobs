@@ -15,7 +15,7 @@ EDIT_CODE_DAYS = "30"
 RETURN_EDIT_CODE_AFTER_EMAIL = "false"
 CLAUDE_MODEL = "claude-haiku-4-5-20251001"
 FROM_EMAIL = "ApplianceInstallJobs <no-reply@applianceinstalljobs.com>"
-GOOGLE_INDEXING_ENABLED = "false"
+GOOGLE_INDEXING_ENABLED = "true"
 
 # ── Clone config ──────────────────────────────────────────────────────────────
 SITE_NAME = "ApplianceInstallJobs"

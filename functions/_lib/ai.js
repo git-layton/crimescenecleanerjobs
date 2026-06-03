@@ -103,7 +103,7 @@ async function claudeParse(env, rawText, hints) {
     },
     body: JSON.stringify({
       model: env.CLAUDE_MODEL || 'claude-haiku-4-5-20251001',
-      max_tokens: 3000,
+      max_tokens: 8096,
       system: `You are a professional job board editor. Extract structured data and rewrite the job description as clean HTML.
 
 CRITICAL FIRST STEP — IDENTIFY THE JOB CONTENT:

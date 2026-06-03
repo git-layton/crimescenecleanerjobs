@@ -473,12 +473,19 @@ export function buildJobPostingJsonLd(job, siteUrl, siteName = 'CrimeSceneCleane
   const validThroughFuture = rawValidThrough && new Date(rawValidThrough) > new Date()
     ? rawValidThrough : undefined;
 
+  // datePosted is required by Google Jobs — fall back to now if both dates are missing.
+  const datePosted = job.published_at || job.created_at || new Date().toISOString();
+
+  // Remote jobs need jobLocationType + applicantLocationRequirements so Google surfaces
+  // them in "remote" job searches.
+  const isRemote = /remote|telecommute/i.test(job.location_type || '');
+
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'JobPosting',
     title: job.title || undefined,
     description: descriptionText || undefined,
-    datePosted: job.published_at || job.created_at || undefined,
+    datePosted,
     validThrough: validThroughFuture,
     employmentType: job.employment_type || undefined,
     hiringOrganization: {
@@ -503,6 +510,16 @@ export function buildJobPostingJsonLd(job, siteUrl, siteName = 'CrimeSceneCleane
     // directApply tells Google this is a direct application link (improves Jobs visibility)
     directApply: Boolean(job.apply_url),
   };
+
+  // Remote jobs: signal to Google that the position is fully remote so it shows up
+  // in remote-filtered job searches and gets the TELECOMMUTE badge.
+  if (isRemote) {
+    jsonLd.jobLocationType = 'TELECOMMUTE';
+    jsonLd.applicantLocationRequirements = {
+      '@type': 'Country',
+      name: job.country || 'US',
+    };
+  }
 
   if (job.company_url) jsonLd.hiringOrganization.sameAs = job.company_url;
   if (job.pay_min || job.pay_max) {

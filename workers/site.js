@@ -19,6 +19,7 @@ import { onRequestPost as deleteOrFillWithEditCode } from '../functions/api/edit
 import { onRequestPost as verifyPromo } from '../functions/api/checkout/verify-promo.js';
 import { onRequestPost as logEvent, onRequestGet as getEvents } from '../functions/api/events.js';
 import { onRequestPost as requestIndexing } from '../functions/api/admin/indexing.js';
+import { onRequestPost as reparseJobs } from '../functions/api/admin/reparse-jobs.js';
 import { onRequestGet as getGoogleJobsFeed } from '../functions/api/google/jobs.json.js';
 import { onRequestGet as getSitemap } from '../functions/sitemap.xml.js';
 import { onRequestGet as getJobPage } from '../functions/jobs/[slug].js';
@@ -239,6 +240,10 @@ async function routeRequest(request, env, ctx) {
 
   if (pathname === '/api/admin/indexing' && method === 'POST') {
     return run(requestIndexing, request, env, ctx);
+  }
+
+  if (pathname === '/api/admin/reparse-jobs' && method === 'POST') {
+    return run(reparseJobs, request, env, ctx);
   }
 
   if (pathname === '/api/edit-codes/request' && method === 'POST') {
