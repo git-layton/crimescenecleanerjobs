@@ -12,10 +12,10 @@
  *   status       – which job status to target (default "active")
  */
 
-import { getSiteUrl, json, problem, requireAdmin } from '../../../_lib/http.js';
-import { parseJobText } from '../../../_lib/ai.js';
-import { JOB_COLUMNS, rowToJob, updateJobIndexTimestamp } from '../../../_lib/jobs.js';
-import { notifyGoogleIndexing } from '../../../_lib/google-indexing.js';
+import { getSiteUrl, json, problem, requireAdmin } from '../../_lib/http.js';
+import { parseJobText } from '../../_lib/ai.js';
+import { JOB_COLUMNS, rowToJob, updateJobIndexTimestamp } from '../../_lib/jobs.js';
+import { notifyGoogleIndexing } from '../../_lib/google-indexing.js';
 
 const BLOCKED_SIGNALS = [
   'challenge-platform', 'cf-browser-verification',
